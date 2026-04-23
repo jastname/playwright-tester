@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: playwright-tester
+    
+server:
+  port: 8081
+
+playwright:
+  headless: true
+  timeout: 30000
+  browser: chromium
+
+screenshot:
+  cleanup:
+    enabled: true      # 자동 정리 활성화 여부
+    retain-days: 7     # N일 이상 된 파일 삭제

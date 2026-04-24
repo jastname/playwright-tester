@@ -35,7 +35,7 @@ input[type="url"],
 input[type="number"],
 input[type="text"],
 select {
-    width: 100%;
+    width: 70%;
     padding: 14px;
     border: 1px solid #ccc;
     border-radius: 10px;
@@ -186,7 +186,23 @@ table.scan-table tr:hover td { background: #f5f7ff; }
 .screenshot-thumb-info { padding: 8px 10px; }
 .screenshot-thumb-date { font-size: 11px; color: #888; }
 .screenshot-thumb-size { font-size: 11px; color: #aaa; }
+.screenshot-scenario-tag { font-size: 11px; color: #1a5fd1; font-weight: bold; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ss-del-btn {
+    display: block; width: 100%; margin-top: 6px;
+    background: #fde8e8; color: #c62828; border: 1px solid #f5c6cb;
+    padding: 3px 0; border-radius: 6px; font-size: 11px; cursor: pointer;
+    text-align: center;
+}
+.ss-del-btn:hover { background: #f5c6cb; }
 .screenshot-gallery-empty { text-align: center; color: #aaa; font-size: 14px; padding: 40px 0; border: 1px dashed #ddd; border-radius: 10px; margin-top: 20px; }
+
+/* ── Detail link button ─────────────────────────────────────── */
+.btn-detail-link {
+    display: inline-block; text-align: center; text-decoration: none;
+    background: #0a7a28; color: white; border: none;
+    padding: 7px 14px; border-radius: 10px; font-size: 13px; cursor: pointer;
+}
+.btn-detail-link:hover { background: #085e20; }
 
 /* ── Lightbox ──────────────────────────────────────────────── */
 .lightbox-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.82); z-index: 2000; justify-content: center; align-items: center; padding: 24px; }

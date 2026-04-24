@@ -93,8 +93,15 @@
 
             <div style="display:flex; gap:10px; flex-wrap:wrap;">
                 <button id="screenshotRefreshBtn" type="button" class="btn-secondary">🔄 목록 새로고침</button>
-                <button id="screenshotDeleteOldBtn" type="button" class="btn-danger">🗑 7일 이상 된 파일 삭제</button>
                 <button id="screenshotDeleteAllBtn" type="button" class="btn-danger">⚠️ 전체 삭제</button>
+            </div>
+
+            <div style="margin-top:16px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                <label style="margin:0; font-weight:bold; font-size:14px;">시나리오 필터:</label>
+                <select id="screenshotScenarioFilter" style="padding:7px 10px; border:1px solid #ccc; border-radius:8px; font-size:14px; min-width:200px;">
+                    <option value="">전체</option>
+                </select>
+                <span id="screenshotFilterCount" style="font-size:13px; color:#666;"></span>
             </div>
 
             <div id="screenshotGallery" class="screenshot-gallery"></div>
@@ -494,7 +501,6 @@
     // ── 스크린샷 관리 ────────────────────────────────────────────────
     const screenshotStats      = document.getElementById('screenshotStats');
     const screenshotRefreshBtn = document.getElementById('screenshotRefreshBtn');
-    const screenshotDeleteOldBtn = document.getElementById('screenshotDeleteOldBtn');
     const screenshotDeleteAllBtn = document.getElementById('screenshotDeleteAllBtn');
 
     let screenshotFiles = [];
@@ -520,28 +526,61 @@
     function renderGallery() {
         const gallery = document.getElementById('screenshotGallery');
         const empty   = document.getElementById('screenshotGalleryEmpty');
+        const filterEl = document.getElementById('screenshotScenarioFilter');
+        const filterCountEl = document.getElementById('screenshotFilterCount');
+        const selectedScenario = filterEl ? filterEl.value : '';
+
+        // 필터 옵션 갱신
+        if (filterEl) {
+            const names = [...new Set(screenshotFiles.filter(f => f.scenarioName).map(f => f.scenarioName))];
+            const currentVal = filterEl.value;
+            filterEl.innerHTML = '<option value="">전체</option>' +
+                names.map(n => `<option value="${escapeHtml(n)}" ${n === currentVal ? 'selected' : ''}>${escapeHtml(n)}</option>`).join('');
+        }
+
+        const filtered = selectedScenario
+            ? screenshotFiles.filter(f => f.scenarioName === selectedScenario)
+            : screenshotFiles;
+
+        if (filterCountEl) filterCountEl.textContent = `${filtered.length}개`;
+
         gallery.innerHTML = '';
-        if (screenshotFiles.length === 0) {
+        if (filtered.length === 0) {
             gallery.style.display = 'none';
             empty.style.display   = '';
             return;
         }
         gallery.style.display = '';
         empty.style.display   = 'none';
-        screenshotFiles.forEach((f, idx) => {
+        filtered.forEach((f, idx) => {
+            const realIdx = screenshotFiles.indexOf(f);
             const url  = '/screenshots/' + f.name;
             const date = new Date(f.createdAt).toLocaleString('ko-KR');
             const kb   = (f.size / 1024).toFixed(1);
             const card = document.createElement('div');
             card.className = 'screenshot-thumb-card';
+            const scenarioTag = f.scenarioName
+                ? `<div class="screenshot-scenario-tag">📌 ${escapeHtml(f.scenarioName)} · ${f.stepOrder ?? '?'}단계 <span class="badge ${f.stepStatus === 'success' ? 'badge-success' : 'badge-error'}" style="font-size:10px;">${f.stepStatus === 'success' ? '성공' : '실패'}</span></div>`
+                : '';
             card.innerHTML = `
                 <img class="screenshot-thumb-img" src="${escapeHtml(url)}" alt="${escapeHtml(f.name)}" loading="lazy" />
                 <div class="screenshot-thumb-info">
+                    ${scenarioTag}
                     <div class="screenshot-thumb-date">📅 ${escapeHtml(date)}</div>
                     <div class="screenshot-thumb-size">💾 ${kb} KB</div>
+                    <button class="ss-del-btn" data-name="${escapeHtml(f.name)}" type="button">🗑 삭제</button>
                 </div>
             `;
-            card.addEventListener('click', () => openLightbox(idx));
+            card.querySelector('img').addEventListener('click', () => openLightbox(realIdx));
+            card.querySelector('.ss-del-btn').addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const name = e.currentTarget.dataset.name;
+                if (!confirm(`"${name}" 을(를) 삭제하시겠습니까?`)) return;
+                const res  = await fetch('/api/browser/screenshots/' + encodeURIComponent(name), { method: 'DELETE' });
+                const data = await res.json();
+                if (data.ok) await loadScreenshotStats();
+                else alert('삭제 실패: ' + (data.error || ''));
+            });
             gallery.appendChild(card);
         });
     }
@@ -580,15 +619,7 @@
 
     screenshotRefreshBtn.addEventListener('click', loadScreenshotStats);
 
-    screenshotDeleteOldBtn.addEventListener('click', async () => {
-        if (!confirm('7일 이상 된 스크린샷을 삭제하시겠습니까?')) return;
-        const res  = await fetch('/api/browser/screenshots/old?days=7', { method: 'DELETE' });
-        const data = await res.json();
-        data.deleted = data.deleted || 0;
-        
-        alert(`${data.deleted}개 파일이 삭제되었습니다.`);
-        loadScreenshotStats();
-    });
+    document.getElementById('screenshotScenarioFilter').addEventListener('change', renderGallery);
 
     screenshotDeleteAllBtn.addEventListener('click', async () => {
         if (!confirm('스크린샷을 전체 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
@@ -896,6 +927,7 @@ ${data.screenshotUrl ? `<div class="row"><a class="screenshot-link" href="${esca
                     <div class="scenario-result-area" id="result-${sc.id}"></div>
                 </div>
                 <div class="scenario-card-actions">
+                    <a href="/scenario.html?id=${sc.id}" class="btn-detail-link">🔍 상세</a>
                     <button type="button" class="btn-accent run-btn" data-id="${sc.id}">▶ 실행</button>
                     <button type="button" class="btn-danger delete-btn" data-id="${sc.id}" style="font-size:12px;padding:5px 10px;">🗑 삭제</button>
                 </div>
@@ -939,7 +971,7 @@ ${data.screenshotUrl ? `<div class="row"><a class="screenshot-link" href="${esca
 
             const res  = await fetch('/api/browser/test-scenario', {
                 method:'POST', headers:{'Content-Type':'application/json'},
-                body: JSON.stringify({ url: sc.url, browser: sc.browser, headless: sc.headless, timeout: sc.timeout, steps: apiSteps })
+                body: JSON.stringify({ url: sc.url, browser: sc.browser, headless: sc.headless, timeout: sc.timeout, steps: apiSteps, scenarioId: sc.id, scenarioName: sc.name })
             });
             const data = await res.json();
             const stepResults = data.steps || [];

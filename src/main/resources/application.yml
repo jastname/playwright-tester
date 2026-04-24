@@ -3,7 +3,7 @@ spring:
     name: playwright-tester
     
 server:
-  port: 8081
+  port: ${SERVER_PORT:8888}
 
 playwright:
   headless: true

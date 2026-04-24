@@ -6,9 +6,13 @@ import io.github.jastname.playwrighttester.controller.ScenarioRequest;
 import org.springframework.stereotype.Service;
 import io.github.jastname.playwrighttester.dto.ButtonCandidate;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -17,6 +21,8 @@ import java.util.UUID;
 
 @Service
 public class PlaywrightService {
+
+    private static final Logger log = LoggerFactory.getLogger(PlaywrightService.class);
 
     // ── UI 인스펙터: 브라우저에 주입할 스크립트 ───────────────────────────────
     private static final String INSPECTOR_SCRIPT = """
@@ -165,7 +171,55 @@ public class PlaywrightService {
               }
             }
 
-            badge.addEventListener('click', function(e) { e.stopPropagation(); toggle(); });
+            // ── 배지 드래그 이동 ──────────────────────────────────
+            (function() {
+              var dragging = false;
+              var startX, startY, origLeft, origTop;
+
+              badge.style.cursor = 'grab';
+
+              badge.addEventListener('mousedown', function(e) {
+                if (e.button !== 0) return; // 좌클릭만
+                dragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                var rect = badge.getBoundingClientRect();
+                // 현재 위치를 left/top 절대값으로 고정 (right 기반 → left 기반으로 전환)
+                badge.style.right  = 'auto';
+                badge.style.bottom = 'auto';
+                badge.style.left   = rect.left + 'px';
+                badge.style.top    = rect.top  + 'px';
+                origLeft = rect.left;
+                origTop  = rect.top;
+                badge.style.cursor = 'grabbing';
+                e.preventDefault();
+                e.stopPropagation();
+              }, true);
+
+              document.addEventListener('mousemove', function(e) {
+                if (!dragging) return;
+                var dx = e.clientX - startX;
+                var dy = e.clientY - startY;
+                badge.style.left = Math.max(0, origLeft + dx) + 'px';
+                badge.style.top  = Math.max(0, origTop  + dy) + 'px';
+              }, true);
+
+              document.addEventListener('mouseup', function(e) {
+                if (!dragging) return;
+                dragging = false;
+                badge.style.cursor = 'grab';
+              }, true);
+
+              // 드래그 중 클릭 이벤트 흡수 (toggle 방지)
+              badge.addEventListener('click', function(e) {
+                var dx = Math.abs(e.clientX - startX);
+                var dy = Math.abs(e.clientY - startY);
+                if (dx > 4 || dy > 4) { e.stopPropagation(); return; }
+                e.stopPropagation();
+                toggle();
+              });
+            })();
+
             document.addEventListener('keydown', function(e) { if (e.key === 'Escape') toggle(); }, true);
 
             // ── 마우스 이동: 하이라이팅 ───────────────────────────
@@ -202,12 +256,10 @@ public class PlaywrightService {
               }, 400);
 
               showBanner('✅ 캡처: ' + (info.text !== '-' ? info.text : info.selector).slice(0, 40));
-              fetch('http://localhost:8081/api/browser/inspector/capture', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sessionId: window.__inspectorSessionId, element: info })
-              }).then(function(r){ console.log('[Inspector] captured, status:', r.status); })
-                .catch(function(e){ console.error('[Inspector] fetch error:', e); });
+              // CSP 우회: fetch 대신 전역 큐에 저장 → Playwright 서버 측 폴링으로 수집
+              if (!window.__inspectorQueue) window.__inspectorQueue = [];
+              window.__inspectorQueue.push(info);
+              console.log('[Inspector] queued element, queue size:', window.__inspectorQueue.length);
             }, true);
 
           } // end __initInspector
@@ -232,13 +284,30 @@ public class PlaywrightService {
                 playwright = Playwright.create();
                 browser    = launchBrowser(playwright, browserName, false); // 항상 non-headless
 
-                BrowserContext ctx = browser.newContext();
+                BrowserContext ctx = newStealthContext(browser);
 
                 // ── sessionId 먼저 주입 (INSPECTOR_SCRIPT에서 사용) ──
                 ctx.addInitScript("window.__inspectorSessionId = '" + session.id + "';");
 
                 // ── 매 페이지 로드마다 인스펙터 스크립트 주입 ──
                 ctx.addInitScript(INSPECTOR_SCRIPT);
+
+                // ── 팝업(소셜 로그인 등) 새 창에도 인스펙터 주입 ──
+                final String sessionId = session.id;
+                final String initScript = "window.__inspectorSessionId = '" + sessionId + "';\n" + INSPECTOR_SCRIPT;
+                ctx.onPage(popupPage -> {
+                    // 팝업이 열리는 순간 스크립트를 즉시 주입 (페이지 로드 전)
+                    try {
+                        popupPage.addInitScript(initScript);
+                    } catch (Exception ignored) {}
+                    // 이미 로드된 경우를 대비해 evaluate로도 주입
+                    popupPage.onLoad(p -> {
+                        try {
+                            p.evaluate("window.__inspectorSessionId = '" + sessionId + "';");
+                            p.evaluate(INSPECTOR_SCRIPT);
+                        } catch (Exception ignored) {}
+                    });
+                });
 
                 Page page = ctx.newPage();
                 page.setDefaultTimeout(timeout);
@@ -260,6 +329,23 @@ public class PlaywrightService {
                 while (session.stopSignal.getCount() > 0) {
                     // 모든 페이지가 닫혔으면 종료
                     if (ctx.pages().isEmpty()) break;
+
+                    // ── 활성 페이지에서 __inspectorQueue 드레인 ──
+                    for (Page p : ctx.pages()) {
+                        try {
+                            @SuppressWarnings("unchecked")
+                            List<Map<String, Object>> queued = (List<Map<String, Object>>) p.evaluate(
+                                "(function(){ var q = window.__inspectorQueue; window.__inspectorQueue = []; return q || []; })()"
+                            );
+                            for (Map<String, Object> item : queued) {
+                                var info = new java.util.LinkedHashMap<>(item);
+                                info.put("capturedAt", System.currentTimeMillis());
+                                session.elements.add(info);
+                                System.out.println("[Inspector][queue] captured: " + info.getOrDefault("selector", "?"));
+                            }
+                        } catch (Exception ignored) {}
+                    }
+
                     Thread.sleep(400);
                 }
 
@@ -553,14 +639,39 @@ public class PlaywrightService {
         return result;
     }
 
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    private void writeSidecar(Path screenshotDir, String fileName, Long scenarioId, String scenarioName, int stepOrder, String selector, String status) {
+        try {
+            Map<String, Object> meta = new LinkedHashMap<>();
+            meta.put("scenarioId",   scenarioId);
+            meta.put("scenarioName", scenarioName);
+            meta.put("stepOrder",    stepOrder);
+            meta.put("selector",     selector);
+            meta.put("status",       status);
+            meta.put("createdAt",    Instant.now().toString());
+            String jsonName = fileName.replace(".png", ".json");
+            OBJECT_MAPPER.writeValue(screenshotDir.resolve(jsonName).toFile(), meta);
+        } catch (Exception ignored) {}
+    }
+
     public Map<String, Object> testScenario(
             String url, String browserName, boolean headless, int timeout,
             List<ScenarioRequest.ScenarioStep> steps) {
+        return testScenario(url, browserName, headless, timeout, steps, null, null);
+    }
+
+    public Map<String, Object> testScenario(
+            String url, String browserName, boolean headless, int timeout,
+            List<ScenarioRequest.ScenarioStep> steps, Long scenarioId, String scenarioName) {
 
         Map<String, Object> scenarioResult = new LinkedHashMap<>();
         List<Map<String, Object>> stepResults = new ArrayList<>();
         scenarioResult.put("url", url);
         scenarioResult.put("totalSteps", steps.size());
+
+        String scenarioLabel = (scenarioName != null ? "[" + scenarioName + "] " : "");
+        log.info("{}시나리오 실행 시작 | URL: {} | 총 {}단계", scenarioLabel, url, steps.size());
 
         try (Playwright playwright = Playwright.create()) {
             Browser browser = launchBrowser(playwright, browserName, headless);
@@ -578,6 +689,9 @@ public class PlaywrightService {
                     Path screenshotDir = Paths.get("screenshots");
                     Files.createDirectories(screenshotDir);
 
+                    // 현재 활성 페이지 (팝업이 열리면 팝업으로 전환됨)
+                    final Page[] activePage = {page};
+
                     for (int i = 0; i < steps.size(); i++) {
                         ScenarioRequest.ScenarioStep step = steps.get(i);
                         Map<String, Object> stepResult = new LinkedHashMap<>();
@@ -588,7 +702,7 @@ public class PlaywrightService {
 
                         try {
                             // 셀렉터 후보: 원본 → 마지막 파트만 → 클래스만
-                            Locator locator = resolveLocator(page, step.getSelector());
+                            Locator locator = resolveLocator(activePage[0], step.getSelector());
 
                             // 뷰포트 안으로 스크롤
                             try { locator.scrollIntoViewIfNeeded(
@@ -597,11 +711,42 @@ public class PlaywrightService {
 
                             switch (step.getInteractionType()) {
                                 case "click" -> {
+                                    // 클릭 전에 팝업 감지 준비
+                                    Page popupPage = null;
                                     try {
-                                        locator.click(new Locator.ClickOptions().setTimeout(8000));
-                                    } catch (Exception clickEx) {
-                                        // fallback: force click (bypasses actionability checks, e.g. overlapping elements)
-                                        locator.click(new Locator.ClickOptions().setTimeout(8000).setForce(true));
+                                        Runnable clickAction = () -> {
+                                            try {
+                                                locator.click(new Locator.ClickOptions().setTimeout(8000));
+                                            } catch (Exception clickEx) {
+                                                try {
+                                                    locator.click(new Locator.ClickOptions().setTimeout(8000).setForce(true));
+                                                } catch (Exception forceEx) {
+                                                    log.warn("force click 실패, JS click 시도 | selector: {}", step.getSelector());
+                                                    activePage[0].evaluate(
+                                                        "sel => { const el = document.querySelector(sel); if (el) el.click(); else throw new Error('element not found: ' + sel); }",
+                                                        step.getSelector()
+                                                    );
+                                                }
+                                            }
+                                        };
+                                        popupPage = ctx.waitForPage(
+                                            new BrowserContext.WaitForPageOptions().setTimeout(3000),
+                                            clickAction
+                                        );
+                                    } catch (Exception noPopup) {
+                                        // 팝업이 열리지 않은 경우 → 정상적인 동일 페이지 클릭
+                                        popupPage = null;
+                                    }
+
+                                    if (popupPage != null) {
+                                        // 팝업 페이지가 열렸으면 로드 대기 후 전환
+                                        try {
+                                            popupPage.waitForLoadState(com.microsoft.playwright.options.LoadState.DOMCONTENTLOADED,
+                                                    new Page.WaitForLoadStateOptions().setTimeout(10000));
+                                        } catch (Exception ignored) {}
+                                        log.info("{}[Step {}/{}] 팝업 창 감지 → 팝업으로 전환 | URL: {}",
+                                                scenarioLabel, i + 1, steps.size(), popupPage.url());
+                                        activePage[0] = popupPage;
                                     }
                                 }
                                 case "fill" -> {
@@ -616,7 +761,7 @@ public class PlaywrightService {
                                     }
                                     // Dispatch input/change events so React/Vue controlled components reflect the value
                                     try {
-                                        page.evaluate(
+                                        activePage[0].evaluate(
                                             "selector => { const el = document.querySelector(selector); if (el) { " +
                                             "el.dispatchEvent(new Event('input', { bubbles: true })); " +
                                             "el.dispatchEvent(new Event('change', { bubbles: true })); } }",
@@ -624,13 +769,13 @@ public class PlaywrightService {
                                         );
                                     } catch (Exception ignored) {}
                                     // Short extra wait for autocomplete/dropdown to settle, then dismiss it
-                                    page.waitForTimeout(400);
-                                    try { page.keyboard().press("Escape"); } catch (Exception ignored) {}
-                                    page.waitForTimeout(200);
+                                    activePage[0].waitForTimeout(400);
+                                    try { activePage[0].keyboard().press("Escape"); } catch (Exception ignored) {}
+                                    activePage[0].waitForTimeout(200);
                                 }
                                 case "select" -> {
                                     @SuppressWarnings("unchecked")
-                                    String firstOption = (String) page.evaluate(
+                                    String firstOption = (String) activePage[0].evaluate(
                                         "sel => { const e = document.querySelector(sel); return e && e.options && e.options.length > 0 ? e.options[0].value : null; }",
                                         step.getSelector()
                                     );
@@ -643,16 +788,23 @@ public class PlaywrightService {
 
                             // 액션 후 대기 (지정된 경우)
                             int waitMs = step.getWaitMs() != null ? step.getWaitMs() : 500;
-                            if (waitMs > 0) page.waitForTimeout(waitMs);
+                            if (waitMs > 0) activePage[0].waitForTimeout(waitMs);
 
                             // 단계별 스크린샷
                             String fileName = UUID.randomUUID() + ".png";
                             Path screenshotPath = screenshotDir.resolve(fileName);
-                            page.screenshot(new Page.ScreenshotOptions().setPath(screenshotPath).setFullPage(false));
+                            activePage[0].screenshot(new Page.ScreenshotOptions().setPath(screenshotPath).setFullPage(false));
+                            writeSidecar(screenshotDir, fileName, scenarioId, scenarioName,
+                                    step.getOrder() != null ? step.getOrder() : i + 1,
+                                    step.getSelector(), "success");
 
                             stepResult.put("status", "success");
-                            stepResult.put("currentUrl", page.url());
+                            stepResult.put("currentUrl", activePage[0].url());
                             stepResult.put("screenshotUrl", "/screenshots/" + fileName);
+
+                            log.info("{}[Step {}/{}] ✅ 성공 | {} {} | URL: {}",
+                                    scenarioLabel, i + 1, steps.size(),
+                                    step.getInteractionType(), step.getSelector(), activePage[0].url());
 
                         } catch (Exception e) {
                             String msg = e.getMessage() != null ? e.getMessage() : "알 수 없는 오류";
@@ -663,11 +815,19 @@ public class PlaywrightService {
                             stepResult.put("status", "error");
                             stepResult.put("errorMessage", msg.length() > 1000 ? msg.substring(0, 1000) + "..." : msg);
 
+                            log.error("{}[Step {}/{}] ❌ 실패 | {} {} | 오류: {}",
+                                    scenarioLabel, i + 1, steps.size(),
+                                    step.getInteractionType(), step.getSelector(),
+                                    msg.length() > 200 ? msg.substring(0, 200) + "..." : msg);
+
                             // 실패해도 스크린샷 남기기
                             try {
                                 String fileName = UUID.randomUUID() + ".png";
                                 Path screenshotPath = screenshotDir.resolve(fileName);
-                                page.screenshot(new Page.ScreenshotOptions().setPath(screenshotPath).setFullPage(false));
+                                activePage[0].screenshot(new Page.ScreenshotOptions().setPath(screenshotPath).setFullPage(false));
+                                writeSidecar(screenshotDir, fileName, scenarioId, scenarioName,
+                                        step.getOrder() != null ? step.getOrder() : i + 1,
+                                        step.getSelector(), "error");
                                 stepResult.put("screenshotUrl", "/screenshots/" + fileName);
                             } catch (Exception ignored) {}
                         }
@@ -688,28 +848,104 @@ public class PlaywrightService {
         scenarioResult.put("successCount", successCount);
         scenarioResult.put("failCount", steps.size() - successCount);
         scenarioResult.put("steps", stepResults);
+
+        String finalStatus = successCount == steps.size() ? "✅ 전체 성공" : "⚠️ 일부 실패";
+        log.info("{}시나리오 실행 완료 | {} | 성공: {}/{}", scenarioLabel, finalStatus, successCount, steps.size());
+
         return scenarioResult;
     }
 
     /**
+     * Tailwind 유틸리티 클래스의 특수문자를 CSS 셀렉터용으로 이스케이프합니다.
+     * 예: .mb-[calc(max(5rem,auto))] → .mb-\[calc\(max\(5rem\,auto\)\)\]
+     * 클래스명 토큰 내부의 [ ] ( ) , / : 를 이스케이프하되,
+     * :nth-of-type(...) 같은 pseudo-class는 건드리지 않습니다.
+     */
+    private String escapeTailwindSelector(String selector) {
+        // 파트(" > " 기준)별로 처리
+        String[] parts = selector.split("(?= > )");
+        StringBuilder result = new StringBuilder();
+        for (String part : parts) {
+            result.append(escapeSelectorPart(part));
+        }
+        return result.toString();
+    }
+
+    private String escapeSelectorPart(String part) {
+        // 각 파트에서 클래스명(.xxx) 토큰을 찾아 특수문자 이스케이프
+        StringBuilder sb = new StringBuilder();
+        int i = 0;
+        while (i < part.length()) {
+            char c = part.charAt(i);
+            if (c == '.') {
+                // 클래스명 토큰 시작: 다음 공백, >, # 이 나오기 전까지
+                // 단, :nth-of-type 같은 pseudo는 별도 처리
+                sb.append(c);
+                i++;
+                while (i < part.length()) {
+                    char cc = part.charAt(i);
+                    if (cc == ' ' || cc == '>') {
+                        break; // 토큰 끝
+                    } else if (cc == ':') {
+                        // pseudo-class 시작인지 확인 (:nth-, :hover 등)
+                        // Tailwind의 반응형 prefix (pc:, sm: 등)는 이스케이프 대상
+                        // pseudo-class는 알려진 패턴으로 구분
+                        String remaining = part.substring(i + 1);
+                        if (remaining.matches("^(nth-child|nth-of-type|first-child|last-child|hover|focus|active|not|before|after|root|checked|disabled|enabled|visited|link|lang|is|where|has).*")) {
+                            break; // pseudo-class → 클래스명 토큰 끝
+                        } else {
+                            // Tailwind 반응형 prefix (pc:, sm:, md: 등) → 이스케이프
+                            sb.append("\\:");
+                            i++;
+                        }
+                    } else if (cc == '[' || cc == ']' || cc == '(' || cc == ')' || cc == ',') {
+                        sb.append('\\').append(cc);
+                        i++;
+                    } else {
+                        sb.append(cc);
+                        i++;
+                    }
+                }
+            } else {
+                sb.append(c);
+                i++;
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
      * 셀렉터로 Locator를 찾되, 실패 시 단순화된 셀렉터로 재시도합니다.
-     * 1) 원본 셀렉터
+     * 1) 원본 셀렉터 (Tailwind 이스케이프 적용)
      * 2) " > " 로 분리된 마지막 파트만
      * 3) 첫 번째 클래스만 (예: .my-class)
      */
     private Locator resolveLocator(Page page, String selector) {
-        // 원본 시도
+        String escaped = escapeTailwindSelector(selector);
+
+        // 1) 이스케이프 적용 원본 시도
         try {
-            Locator loc = page.locator(selector).first();
+            Locator loc = page.locator(escaped).first();
             loc.waitFor(new Locator.WaitForOptions()
                     .setState(com.microsoft.playwright.options.WaitForSelectorState.ATTACHED)
                     .setTimeout(8000));
             return loc;
         } catch (Exception ignored) {}
 
-        // 마지막 파트만 (부모 경로 제거)
-        if (selector.contains(" > ")) {
-            String lastPart = selector.substring(selector.lastIndexOf(" > ") + 3).trim();
+        // 2) 원본 그대로 시도 (이미 이스케이프된 경우 대비)
+        if (!escaped.equals(selector)) {
+            try {
+                Locator loc = page.locator(selector).first();
+                loc.waitFor(new Locator.WaitForOptions()
+                        .setState(com.microsoft.playwright.options.WaitForSelectorState.ATTACHED)
+                        .setTimeout(5000));
+                return loc;
+            } catch (Exception ignored) {}
+        }
+
+        // 3) 마지막 파트만 (부모 경로 제거)
+        if (escaped.contains(" > ")) {
+            String lastPart = escaped.substring(escaped.lastIndexOf(" > ") + 3).trim();
             try {
                 Locator loc = page.locator(lastPart).first();
                 loc.waitFor(new Locator.WaitForOptions()
@@ -719,7 +955,7 @@ public class PlaywrightService {
             } catch (Exception ignored) {}
         }
 
-        // 클래스만 추출 (예: div.foo.bar → .foo)
+        // 4) 클래스만 추출 (예: div.foo.bar → .foo)
         String classOnly = selector.replaceAll("^.*?(\\.[\\w-]+).*$", "$1");
         if (classOnly.startsWith(".") && !classOnly.equals(selector)) {
             try {
@@ -735,9 +971,24 @@ public class PlaywrightService {
         return page.locator(selector).first();
     }
 
+    private static final String STEALTH_USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+    private static final String STEALTH_INIT_SCRIPT = """
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+        Object.defineProperty(navigator, 'languages', { get: () => ['ko-KR', 'ko', 'en-US', 'en'] });
+        window.chrome = { runtime: {} };
+    """;
+
     private Browser launchBrowser(Playwright playwright, String browserName, boolean headless) {
         BrowserType.LaunchOptions options = new BrowserType.LaunchOptions()
-                .setHeadless(headless);
+                .setHeadless(headless)
+                .setArgs(java.util.List.of(
+                        "--disable-blink-features=AutomationControlled",
+                        "--no-sandbox",
+                        "--disable-dev-shm-usage"
+                ));
 
         return switch (browserName.toLowerCase()) {
             case "firefox" -> playwright.firefox().launch(options);
@@ -745,6 +996,20 @@ public class PlaywrightService {
             case "chromium" -> playwright.chromium().launch(options);
             default -> throw new IllegalArgumentException("지원하지 않는 브라우저입니다: " + browserName);
         };
+    }
+
+    private BrowserContext newStealthContext(Browser browser) {
+        Browser.NewContextOptions ctxOptions = new Browser.NewContextOptions()
+                .setUserAgent(STEALTH_USER_AGENT)
+                .setLocale("ko-KR")
+                .setTimezoneId("Asia/Seoul")
+                .setViewportSize(1920, 1080)
+                .setExtraHTTPHeaders(java.util.Map.of(
+                        "Accept-Language", "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7"
+                ));
+        BrowserContext ctx = browser.newContext(ctxOptions);
+        ctx.addInitScript(STEALTH_INIT_SCRIPT);
+        return ctx;
     }
 
 }

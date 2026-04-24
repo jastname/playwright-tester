@@ -31,6 +31,12 @@ public class ScenarioRequest {
     @Valid
     private List<ScenarioStep> steps;
 
+    /** 시나리오 ID (스크린샷 메타 연결용, optional) */
+    private Long scenarioId;
+
+    /** 시나리오 이름 (스크린샷 메타 연결용, optional) */
+    private String scenarioName;
+
     @Getter
     @Setter
     public static class ScenarioStep {
@@ -45,5 +51,8 @@ public class ScenarioRequest {
 
         // 각 액션 후 대기 (ms), 기본 0
         private Integer waitMs;
+
+        // 실제 단계 순서 (스크린샷 메타 저장용, optional)
+        private Integer order;
     }
 }

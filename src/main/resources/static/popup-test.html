@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Popup Test</title>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; padding: 24px; }
+    button { padding: 10px 16px; font-size: 16px; }
+    #log { margin-top: 16px; padding: 12px; border: 1px solid #ddd; min-height: 80px; background:#fafafa }
+  </style>
+</head>
+<body>
+  <h1>팝업 테스트 페이지</h1>
+  <p>아래 버튼을 클릭하면 테스트용 팝업이 열립니다. 팝업에서 로그인 정보를 전송하면 이 페이지에 표시됩니다.</p>
+
+  <button id="openPopup">팝업 열기</button>
+  <div id="log">수신된 메시지 없음</div>
+
+  <script>
+    const btn = document.getElementById('openPopup');
+    const log = document.getElementById('log');
+    let popupRef = null;
+
+    btn.addEventListener('click', () => {
+      const w = 500, h = 600;
+      const left = (screen.width/2) - (w/2);
+      const top = (screen.height/2) - (h/2);
+      popupRef = window.open('/popup.html', 'popupTest', `width=${w},height=${h},left=${left},top=${top}`);
+      log.textContent = '팝업 대기 중...';
+    });
+
+    window.addEventListener('message', (ev) => {
+      // 보안: 원본 체크를 원하는 경우 ev.origin 확인
+      try {
+        const data = typeof ev.data === 'string' ? JSON.parse(ev.data) : ev.data;
+        log.textContent = '수신: ' + JSON.stringify(data);
+      } catch (e) {
+        log.textContent = '수신(비파싱): ' + String(ev.data);
+      }
+
+      // 팝업이 열린 상태이면 자동으로 닫기
+      try { if (popupRef && !popupRef.closed) popupRef.close(); } catch (e) {}
+    });
+
+    // 팝업이 직접 opener.postMessage 하지 못하는 환경을 테스트하려면
+    // 팝업이 window.opener를 통해 접근했는지 주기적으로 확인
+    setInterval(() => {
+      if (popupRef && popupRef.closed) return;
+      try {
+        if (popupRef && popupRef.location && popupRef.location.href) {
+          // noop: 접근 가능한 경우
+        }
+      } catch (e) {
+        // cross-origin 상태일 때 접근 불가 -- 하이라이트 테스트 대상
+      }
+    }, 1000);
+  </script>
+</body>
+</html>

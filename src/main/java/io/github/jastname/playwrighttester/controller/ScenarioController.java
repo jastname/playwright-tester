@@ -29,6 +29,14 @@ public class ScenarioController {
                 .body(scenarioStore.loadRaw());
     }
 
+    /** ID로 시나리오 조회 */
+    @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> getById(@PathVariable("id") long id) {
+        String json = scenarioStore.loadById(id);
+        if (json == null) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(json);
+    }
+
     /** 전체 목록을 파일에 저장 (요청 body를 그대로 파일에 기록) */
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public Map<String, Object> save(@RequestBody String body) {
@@ -37,5 +45,20 @@ public class ScenarioController {
             "ok", true,
             "path", scenarioStore.getSavePath().toString()
         );
+    }
+
+    /** ID로 시나리오 수정 */
+    @PutMapping(value = "/{id}", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> updateById(@PathVariable("id") long id, @RequestBody String body) {
+        boolean updated = scenarioStore.updateById(id, body);
+        if (!updated) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok(Map.of("ok", true));
+    }
+
+    /** ID로 시나리오 삭제 */
+    @DeleteMapping("/{id}")
+    public Map<String, Object> deleteById(@PathVariable("id") long id) {
+        boolean deleted = scenarioStore.deleteById(id);
+        return Map.of("ok", deleted);
     }
 }

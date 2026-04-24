@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>시나리오 상세</title>
+    <link rel="stylesheet" href="/style.css" />
+    <style>
+        .back-link {
+            display: inline-flex; align-items: center; gap: 6px;
+            text-decoration: none; color: #1a5fd1; font-weight: bold;
+            font-size: 14px; margin-bottom: 20px;
+            padding: 6px 14px; border: 1px solid #c0d0f0; border-radius: 8px;
+            background: #f0f4ff;
+        }
+        .back-link:hover { background: #dde8ff; }
+        .scenario-info-card {
+            background: #f8f9fa; border: 1px solid #e2e2e2; border-radius: 12px;
+            padding: 18px 24px; margin-bottom: 24px;
+            display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+        }
+        .scenario-info-card .title { font-size: 20px; font-weight: bold; width: 100%; }
+        .meta-pill { background: #fff; border: 1px solid #ddd; border-radius: 20px; padding: 4px 14px; font-size: 13px; color: #555; }
+        .action-bar {
+            display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+            margin-bottom: 24px; padding: 14px 18px;
+            background: #fff8f0; border: 1px solid #f5ddb0; border-radius: 12px;
+        }
+        .action-bar .hint { font-size: 13px; color: #888; margin-left: auto; }
+        .steps-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .steps-table th { background: #1f1f1f; color: #fff; padding: 10px 14px; text-align: left; white-space: nowrap; }
+        .steps-table td { padding: 10px 14px; border-bottom: 1px solid #eee; vertical-align: middle; }
+        .steps-table tr:hover td { background: #f5f7ff; }
+        .steps-table tr.running td     { background: #fffde7; }
+        .steps-table tr.done-success td { background: #f0fff4; }
+        .steps-table tr.done-error td   { background: #fff3f3; }
+        .step-num {
+            width: 36px; height: 36px; border-radius: 50%;
+            background: #e0e0e0; color: #555; font-weight: bold;
+            display: inline-flex; align-items: center; justify-content: center; font-size: 14px;
+        }
+        .step-num.running { background: #ffe082; color: #7a5500; animation: pulse 0.9s infinite; }
+        .step-num.success { background: #c8f7d4; color: #0a7a28; }
+        .step-num.error   { background: #fde8e8; color: #c62828; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+        .selector-cell { font-size: 12px; color: #888; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .step-screenshot { width: 90px; height: 56px; object-fit: cover; border-radius: 6px; border: 1px solid #ddd; cursor: pointer; }
+        .step-error-msg {
+            font-size: 12px; color: #c62828; max-height: 50px; overflow-y: auto;
+            background: #fff3f3; border: 1px solid #f5c6cb; border-radius: 6px;
+            padding: 4px 8px; max-width: 260px; white-space: pre-wrap; word-break: break-all; cursor: pointer;
+        }
+        .step-error-msg.expanded { max-height: none; }
+        /* 단계별 실행 버튼 */
+        .step-run-btn {
+            background: #1a5fd1; color: #fff; border: none;
+            padding: 5px 16px; border-radius: 8px; font-size: 12px;
+            font-weight: bold; cursor: pointer; white-space: nowrap; transition: background 0.15s;
+        }
+        .step-run-btn:hover:not(:disabled) { background: #1449a8; }
+        .step-run-btn:disabled { opacity: 0.32; cursor: not-allowed; background: #999; }
+        .step-run-btn.running { background: #e65100; pointer-events: none; }
+        .result-summary {
+            display: flex; gap: 12px; padding: 14px 20px;
+            border-radius: 12px; margin-top: 20px; align-items: center; flex-wrap: wrap;
+        }
+        .result-summary.success { background: #d4edda; border: 1px solid #a8d5b5; }
+        .result-summary.partial { background: #fff3cd; border: 1px solid #f5dda8; }
+        .result-summary.error   { background: #fde8e8; border: 1px solid #f5c6c6; }
+        .ss-lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.82); z-index: 2000; justify-content: center; align-items: center; padding: 24px; }
+        .ss-lightbox.open { display: flex; }
+        .ss-lightbox-inner { position: relative; max-width: 92vw; max-height: 90vh; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .ss-lightbox-inner img { max-width: 100%; max-height: 82vh; border-radius: 8px; box-shadow: 0 8px 40px rgba(0,0,0,0.5); object-fit: contain; }
+        .ss-lightbox-close { position: absolute; top: -14px; right: -14px; background: #fff; border: none; border-radius: 50%; width: 34px; height: 34px; font-size: 16px; cursor: pointer; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.25); display: flex; align-items: center; justify-content: center; padding: 0; }
+        .ss-lightbox-label { color: #ddd; font-size: 13px; }
+
+        /* ── 스크린샷 패널 카드 ── */
+        .ss-card {
+            border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden;
+            background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            transition: box-shadow 0.15s, transform 0.15s; cursor: pointer;
+        }
+        .ss-card:hover { box-shadow: 0 6px 18px rgba(0,0,0,0.13); transform: translateY(-2px); }
+        .ss-card img { width:100%; height:110px; object-fit:cover; display:block; background:#f4f4f4; }
+        .ss-card-info { padding: 8px 10px; }
+        .ss-card-step { font-size:12px; font-weight:bold; color:#1a5fd1; margin-bottom:3px; }
+        .ss-card-date { font-size:11px; color:#aaa; }
+
+        /* ── 편집 모드 ── */
+        .edit-bar {
+            display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+            margin-bottom: 24px; padding: 14px 18px;
+            background: #f0f4ff; border: 1px solid #c0d0f0; border-radius: 12px;
+        }
+        .edit-bar .hint { font-size: 13px; color: #888; margin-left: auto; }
+
+        .edit-field {
+            padding: 6px 10px; border: 1px solid #ccc; border-radius: 8px;
+            font-size: 14px; background: #fff;
+        }
+        .edit-field:focus { outline: none; border-color: #1a5fd1; box-shadow: 0 0 0 2px rgba(26,95,209,0.15); }
+
+        /* 단계 편집 테이블 */
+        .edit-steps-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .edit-steps-table th { background: #2d2d2d; color: #fff; padding: 9px 12px; text-align: left; white-space: nowrap; }
+        .edit-steps-table td { padding: 8px 12px; border-bottom: 1px solid #eee; vertical-align: middle; }
+        .edit-steps-table tr:hover td { background: #f9f9ff; }
+
+        .edit-input-sm { width: 100%; padding: 5px 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 12px; }
+        .edit-input-sm:focus { outline: none; border-color: #1a5fd1; }
+
+        .step-del-btn {
+            background: #fde8e8; color: #c62828; border: 1px solid #f5c6cb;
+            padding: 3px 10px; border-radius: 6px; font-size: 12px; cursor: pointer;
+        }
+        .step-del-btn:hover { background: #f5c6cb; }
+
+        .add-step-row {
+            display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+            margin-top: 12px; padding: 12px 14px;
+            background: #f8f9fa; border: 1px dashed #ccc; border-radius: 10px;
+        }
+        .add-step-row input, .add-step-row select { flex: 1; min-width: 120px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <a class="back-link" href="/">← 목록으로 돌아가기</a>
+
+    <div id="notFound" style="display:none; text-align:center; padding:60px 0; color:#aaa;">
+        <div style="font-size:48px; margin-bottom:16px;">🔍</div>
+        <div style="font-size:18px;">시나리오를 찾을 수 없습니다.</div>
+        <a href="/" class="back-link" style="margin-top:20px; display:inline-flex;">← 목록으로</a>
+    </div>
+
+    <div id="main" style="display:none;">
+        <div class="scenario-info-card">
+            <div class="title" id="scTitle">—</div>
+            <span class="meta-pill" id="scUrl">—</span>
+            <span class="meta-pill" id="scBrowser">—</span>
+            <span class="meta-pill" id="scTimeout">—</span>
+            <span class="meta-pill" id="scHeadless">—</span>
+            <span class="meta-pill" id="scStepCount">—</span>
+        </div>
+
+        <div class="action-bar">
+            <button id="runAllBtn" class="btn-accent" type="button">▶ 전체 실행</button>
+            <button id="resetBtn" class="btn-secondary" type="button">↺ 결과 초기화</button>
+            <button id="screenshotViewBtn" type="button" style="background:#00838f;color:#fff;border:none;padding:12px 18px;border-radius:10px;font-size:15px;cursor:pointer;">🖼 스크린샷 보기</button>
+            <button id="editToggleBtn" type="button" style="background:#7b1fa2;color:#fff;border:none;padding:12px 18px;border-radius:10px;font-size:15px;cursor:pointer;">✏️ 편집</button>
+            <span class="hint">각 단계의 <b>▶</b> 버튼으로 순차 실행 · 이전 단계를 실행해야 다음 단계 버튼이 활성화됩니다.</span>
+        </div>
+
+        <!-- ── 스크린샷 모달 ── -->
+        <div id="screenshotModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:1500; overflow-y:auto; padding:40px 20px;">
+            <div style="background:#fff; border-radius:16px; max-width:1100px; margin:0 auto; box-shadow:0 12px 48px rgba(0,0,0,0.22); display:flex; flex-direction:column;">
+                <!-- 모달 헤더 -->
+                <div style="padding:18px 24px; border-bottom:1px solid #eee; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; flex-shrink:0;">
+                    <div style="font-size:17px; font-weight:bold;">🖼 스크린샷 — <span id="ssModalTitle"></span></div>
+                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                        <select id="ssStepFilter" style="padding:6px 10px; border:1px solid #ccc; border-radius:8px; font-size:13px;">
+                            <option value="">전체 단계</option>
+                        </select>
+                        <select id="ssStatusFilter" style="padding:6px 10px; border:1px solid #ccc; border-radius:8px; font-size:13px;">
+                            <option value="">성공/실패 전체</option>
+                            <option value="success">✓ 성공만</option>
+                            <option value="error">✗ 실패만</option>
+                        </select>
+                        <button id="ssRefreshBtn" class="btn-secondary" type="button" style="font-size:13px; padding:6px 14px;">🔄 새로고침</button>
+                        <button id="ssCloseBtn" type="button" style="background:none; border:none; font-size:22px; cursor:pointer; color:#555; padding:2px 8px; line-height:1;">✕</button>
+                    </div>
+                </div>
+                <!-- 모달 바디 -->
+                <div style="padding:20px 24px; overflow-y:auto;">
+                    <div id="ssLoadingMsg" style="text-align:center; color:#aaa; padding:40px; font-size:14px;">불러오는 중...</div>
+                    <div id="ssGallery" style="display:none; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:14px;"></div>
+                    <div id="ssGalleryEmpty" style="display:none; text-align:center; color:#aaa; padding:40px; border:1px dashed #ddd; border-radius:10px;">이 시나리오에 연결된 스크린샷이 없습니다.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── 편집 모드 패널 ── -->
+        <div id="editPanel" style="display:none; margin-bottom:28px;">
+            <div class="edit-bar">
+                <button id="editSaveBtn" class="btn-success" type="button">💾 저장</button>
+                <button id="editCancelBtn" class="btn-secondary" type="button">취소</button>
+                <span class="hint">변경 후 저장해야 반영됩니다.</span>
+            </div>
+
+            <!-- 기본 설정 편집 -->
+            <div style="background:#f8f9fa; border:1px solid #e2e2e2; border-radius:12px; padding:16px 20px; margin-bottom:16px;">
+                <div style="font-weight:bold; margin-bottom:12px; font-size:14px;">📋 기본 설정</div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; flex-wrap:wrap;">
+                    <div>
+                        <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">시나리오 이름</label>
+                        <input id="editName" class="edit-field" type="text" style="width:100%;" />
+                    </div>
+                    <div>
+                        <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">URL</label>
+                        <input id="editUrl" class="edit-field" type="url" style="width:100%;" />
+                    </div>
+                    <div>
+                        <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">브라우저</label>
+                        <select id="editBrowser" class="edit-field" style="width:100%;">
+                            <option value="chromium">Chromium</option>
+                            <option value="firefox">Firefox</option>
+                            <option value="webkit">WebKit (Safari)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">Timeout (ms)</label>
+                        <input id="editTimeout" class="edit-field" type="number" min="1000" step="1000" style="width:100%;" />
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px; padding-top:18px;">
+                        <input id="editHeadless" type="checkbox" style="width:16px;height:16px;" />
+                        <label for="editHeadless" style="font-size:13px; cursor:pointer; margin:0;">Headless 모드</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 단계 편집 -->
+            <div style="background:#f8f9fa; border:1px solid #e2e2e2; border-radius:12px; padding:16px 20px;">
+                <div style="font-weight:bold; margin-bottom:12px; font-size:14px;">🔢 단계 편집</div>
+                <div style="overflow-x:auto;">
+                    <table class="edit-steps-table">
+                        <thead>
+                            <tr>
+                                <th style="width:44px;">순서</th>
+                                <th>레이블</th>
+                                <th style="width:110px;">인터랙션</th>
+                                <th>셀렉터</th>
+                                <th>입력값 (fill)</th>
+                                <th style="width:70px;">대기(ms)</th>
+                                <th style="width:70px;">삭제</th>
+                            </tr>
+                        </thead>
+                        <tbody id="editStepsBody"></tbody>
+                    </table>
+                </div>
+
+                <!-- 단계 추가 -->
+                <div class="add-step-row">
+                    <span style="font-size:13px; font-weight:bold; white-space:nowrap;">+ 단계 추가</span>
+                    <input id="addLabel" class="edit-field" type="text" placeholder="레이블 (선택)" style="flex:1; min-width:100px;" />
+                    <select id="addInteraction" class="edit-field" style="min-width:100px;">
+                        <option value="click">click</option>
+                        <option value="fill">fill</option>
+                        <option value="select">select</option>
+                    </select>
+                    <input id="addSelector" class="edit-field" type="text" placeholder="셀렉터 (CSS)" style="flex:2; min-width:200px;" />
+                    <input id="addFillText" class="edit-field" type="text" placeholder="입력값 (fill)" style="flex:1; min-width:100px;" />
+                    <button id="addStepBtn" type="button" class="btn-accent" style="white-space:nowrap; padding:8px 16px; font-size:13px;">➕ 추가</button>
+                </div>
+            </div>
+        </div>
+
+        <div style="overflow-x:auto;">
+            <table class="steps-table">
+                <thead>
+                    <tr>
+                        <th style="width:50px;">순서</th>
+                        <th>레이블</th>
+                        <th>인터랙션</th>
+                        <th>입력값</th>
+                        <th>셀렉터</th>
+                        <th style="width:90px;">실행</th>
+                        <th>상태</th>
+                        <th>스크린샷</th>
+                        <th>오류</th>
+                    </tr>
+                </thead>
+                <tbody id="stepsBody"></tbody>
+            </table>
+        </div>
+
+        <div id="resultSummary" class="result-summary" style="display:none;"></div>
+    </div>
+</div>
+
+<div id="ssLightbox" class="ss-lightbox">
+    <div class="ss-lightbox-inner">
+        <button class="ss-lightbox-close" id="ssLightboxClose">✕</button>
+        <img id="ssLightboxImg" src="" alt="screenshot" />
+        <div class="ss-lightbox-label" id="ssLightboxLabel"></div>
+    </div>
+</div>
+
+<script>
+    function escapeHtml(v) {
+        return String(v ?? '')
+            .replaceAll('&','&amp;').replaceAll('<','&lt;')
+            .replaceAll('>','&gt;').replaceAll('"','&quot;')
+            .replaceAll("'",'&#039;');
+    }
+    const badgeCls = { click:'badge-click', fill:'badge-fill', select:'badge-select' };
+
+    // ── 라이트박스 ────────────────────────────────────────────────────
+    const ssLightbox = document.getElementById('ssLightbox');
+    document.getElementById('ssLightboxClose').addEventListener('click', () => ssLightbox.classList.remove('open'));
+    ssLightbox.addEventListener('click', e => { if (e.target === ssLightbox) ssLightbox.classList.remove('open'); });
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') {
+            ssLightbox.classList.remove('open');
+            closeScreenshotModal();
+        }
+    });
+    function openLightbox(url, label) {
+        document.getElementById('ssLightboxImg').src = url;
+        document.getElementById('ssLightboxLabel').textContent = label || '';
+        ssLightbox.classList.add('open');
+    }
+
+    // ── 시나리오 로드 ─────────────────────────────────────────────────
+    const params = new URLSearchParams(location.search);
+    const scenarioId = params.get('id');
+    let scenario = null;
+    const stepResults = [];   // null = 미실행, {status, screenshotUrl, errorMessage} = 실행 완료
+    let runningIdx = -1;      // 현재 실행 중인 단계 인덱스
+
+    (async function init() {
+        if (!scenarioId) { showNotFound(); return; }
+        try {
+            const res = await fetch('/api/scenarios/' + scenarioId);
+            if (!res.ok) { showNotFound(); return; }
+            scenario = await res.json();
+            document.title = `${scenario.name} — 시나리오 상세`;
+            renderInfo();
+            renderSteps();
+            document.getElementById('main').style.display = '';
+        } catch(e) { showNotFound(); }
+    })();
+
+    function showNotFound() { document.getElementById('notFound').style.display = ''; }
+
+    function renderInfo() {
+        document.getElementById('scTitle').textContent     = '📌 ' + scenario.name;
+        document.getElementById('scUrl').textContent       = '🌐 ' + scenario.url;
+        document.getElementById('scBrowser').textContent   = '🖥 ' + scenario.browser;
+        document.getElementById('scTimeout').textContent   = '⏱ ' + scenario.timeout + 'ms';
+        document.getElementById('scHeadless').textContent  = scenario.headless ? '👻 Headless ON' : '🖥 Headless OFF';
+        document.getElementById('scStepCount').textContent = '📋 ' + scenario.steps.length + '단계';
+    }
+
+    // ── 단계 테이블 렌더링 ────────────────────────────────────────────
+    function renderSteps() {
+        const tbody = document.getElementById('stepsBody');
+        tbody.innerHTML = '';
+        scenario.steps.forEach((s, i) => {
+            const res = stepResults[i] ?? null;
+            const tr = document.createElement('tr');
+            tr.id = 'step-row-' + i;
+            if (res) tr.className = res.status === 'success' ? 'done-success' : 'done-error';
+
+            const numCls    = res ? (res.status === 'success' ? 'success' : 'error') : '';
+            const statusHtml = res
+                ? (res.status === 'success'
+                    ? `<span class="badge badge-success">✓ 성공</span>`
+                    : `<span class="badge badge-error">✗ 실패</span>`)
+                : `<span style="color:#bbb;font-size:12px;">—</span>`;
+            const thumbHtml = res && res.screenshotUrl
+                ? `<img class="step-screenshot" src="${escapeHtml(res.screenshotUrl)}" data-url="${escapeHtml(res.screenshotUrl)}" data-label="${escapeHtml('단계 ' + s.order)}" alt="ss" />`
+                : `<span style="color:#ddd;font-size:12px;">—</span>`;
+            const errHtml = res && res.errorMessage
+                ? `<div class="step-error-msg">${escapeHtml(res.errorMessage)}</div>`
+                : `<span style="color:#ddd;font-size:12px;">—</span>`;
+
+            // 버튼 활성화 조건:
+            //  - 첫 단계(i===0): 항상 활성
+            //  - 나머지: 바로 위 단계(i-1)가 실행됐어야 활성 (성공/실패 무관)
+            //  - 실행 중(runningIdx >= 0)에는 전부 비활성
+            const prevDone = i === 0 || stepResults[i - 1] != null;
+            const canRun   = prevDone && runningIdx < 0;
+            const btnLabel = res != null ? '↺ 재실행' : '▶';
+
+            tr.innerHTML = `
+                <td><div class="step-num ${numCls}">${s.order}</div></td>
+                <td><b>${escapeHtml(s.labelText || s.idName || '-')}</b></td>
+                <td><span class="badge ${badgeCls[s.interactionType]||''}">${escapeHtml(s.interactionType)}</span></td>
+                <td style="font-size:12px;color:#666;">${s.fillText ? escapeHtml(s.fillText) : '<span style="color:#bbb;">—</span>'}</td>
+                <td><div class="selector-cell" title="${escapeHtml(s.selector)}">${escapeHtml(s.selector)}</div></td>
+                <td><button class="step-run-btn" data-idx="${i}" ${canRun ? '' : 'disabled'}>${btnLabel}</button></td>
+                <td>${statusHtml}</td>
+                <td>${thumbHtml}</td>
+                <td>${errHtml}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        tbody.querySelectorAll('.step-run-btn').forEach(btn =>
+            btn.addEventListener('click', () => runStep(Number(btn.dataset.idx))));
+        tbody.querySelectorAll('.step-screenshot').forEach(img =>
+            img.addEventListener('click', () => openLightbox(img.dataset.url, img.dataset.label)));
+        tbody.querySelectorAll('.step-error-msg').forEach(el =>
+            el.addEventListener('click', () => el.classList.toggle('expanded')));
+    }
+
+    // ── 단계 하나 실행 ────────────────────────────────────────────────
+    // 단계 i 실행 시 0~i 까지 누적 실행 (이전 단계 상태를 그대로 이어받기 위함)
+    async function runStep(i) {
+        if (runningIdx >= 0) return;
+        runningIdx = i;
+
+        // 전체 버튼 잠금 + 해당 행 running 표시
+        setGlobalBtns(true);
+        const tr  = document.getElementById('step-row-' + i);
+        tr.className = 'running';
+        tr.querySelector('.step-num').className = 'step-num running';
+        const btn = tr.querySelector('.step-run-btn');
+        btn.classList.add('running');
+        btn.textContent = '⏳ 실행 중';
+        tr.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        try {
+            // 0번부터 i번까지 누적 전송 → 브라우저에서 이전 단계 상태를 유지한 채 실행
+            const stepsToRun = scenario.steps.slice(0, i + 1).map(s =>
+                ({ selector: s.selector, interactionType: s.interactionType, fillText: s.fillText, waitMs: s.waitMs, order: s.order })
+            );
+            const res = await fetch('/api/browser/test-scenario', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    url: scenario.url, browser: scenario.browser,
+                    headless: scenario.headless, timeout: scenario.timeout,
+                    steps: stepsToRun,
+                    scenarioId: scenario.id, scenarioName: scenario.name
+                })
+            });
+            const data = await res.json();
+            // 반환된 각 단계 결과를 stepResults에 반영 (중간 단계 포함)
+            (data.steps || []).forEach((sr, idx) => {
+                stepResults[idx] = sr;
+            });
+        } catch(e) {
+            stepResults[i] = { status: 'error', errorMessage: e.message };
+        }
+
+        runningIdx = -1;
+        // 테이블 재렌더링 → 다음 단계 버튼이 자동 활성화
+        renderSteps();
+        setGlobalBtns(false);
+
+        // 전체 완료 시 요약 표시
+        if (stepResults.filter(r => r != null).length === scenario.steps.length) {
+            showSummary({
+                successCount: stepResults.filter(r => r && r.status === 'success').length,
+                failCount:    stepResults.filter(r => r && r.status === 'error').length
+            });
+        }
+    }
+
+    // ── 전체 실행 ────────────────────────────────────────────────────
+    document.getElementById('runAllBtn').addEventListener('click', async () => {
+        resetResults(false);
+        setGlobalBtns(true);
+        document.getElementById('runAllBtn').textContent = '⏳ 실행 중...';
+        try {
+            const apiSteps = scenario.steps.map(({ selector, interactionType, fillText, waitMs }) =>
+                ({ selector, interactionType, fillText, waitMs }));
+            const res = await fetch('/api/browser/test-scenario', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    url: scenario.url, browser: scenario.browser,
+                    headless: scenario.headless, timeout: scenario.timeout,
+                    steps: apiSteps, scenarioId: scenario.id, scenarioName: scenario.name
+                })
+            });
+            const data = await res.json();
+            (data.steps || []).forEach((sr, i) => { stepResults[i] = sr; });
+            renderSteps();
+            showSummary(data);
+        } catch(e) {
+            alert('실행 중 오류: ' + e.message);
+        } finally {
+            setGlobalBtns(false);
+            document.getElementById('runAllBtn').textContent = '▶ 전체 실행';
+        }
+    });
+
+    // ── 결과 초기화 ──────────────────────────────────────────────────
+    document.getElementById('resetBtn').addEventListener('click', () => resetResults(true));
+    function resetResults(rerender = true) {
+        stepResults.length = 0;
+        runningIdx = -1;
+        document.getElementById('resultSummary').style.display = 'none';
+        if (rerender) renderSteps();
+    }
+
+    // ── 전체 버튼 비활성화 (실행 중) ────────────────────────────────
+    function setGlobalBtns(disabled) {
+        document.getElementById('runAllBtn').disabled = disabled;
+        document.getElementById('resetBtn').disabled  = disabled;
+        document.querySelectorAll('.step-run-btn').forEach(b => { b.disabled = disabled; });
+    }
+
+    // ── 결과 요약 ────────────────────────────────────────────────────
+    function showSummary(data) {
+        const el   = document.getElementById('resultSummary');
+        const suc  = data.successCount ?? 0;
+        const fail = data.failCount    ?? 0;
+        el.className = 'result-summary ' + (fail === 0 ? 'success' : suc === 0 ? 'error' : 'partial');
+        el.style.display = 'flex';
+        el.innerHTML = `
+            <span style="font-size:18px;">${fail === 0 ? '✅' : '⚠️'}</span>
+            <span style="font-weight:bold; font-size:15px;">${fail === 0 ? '전체 성공!' : '일부 실패'}</span>
+            <span class="badge badge-success">성공 ${suc}단계</span>
+            <span class="badge badge-error">실패 ${fail}단계</span>
+        `;
+    }
+
+    // ── 스크린샷 모달 ──────────────────────────────────────────────────
+    let allScreenshots = [];
+    const screenshotModal = document.getElementById('screenshotModal');
+
+    document.getElementById('screenshotViewBtn').addEventListener('click', async () => {
+        document.getElementById('ssModalTitle').textContent = scenario.name;
+        screenshotModal.style.display = '';
+        document.body.style.overflow = 'hidden';
+        document.getElementById('ssLoadingMsg').style.display = '';
+        document.getElementById('ssGallery').style.display = 'none';
+        document.getElementById('ssGalleryEmpty').style.display = 'none';
+        await loadScenarioScreenshots();
+    });
+
+    function closeScreenshotModal() {
+        screenshotModal.style.display = 'none';
+        document.body.style.overflow = '';
+    }
+    document.getElementById('ssCloseBtn').addEventListener('click', closeScreenshotModal);
+    screenshotModal.addEventListener('click', e => { if (e.target === screenshotModal) closeScreenshotModal(); });
+
+    document.getElementById('ssRefreshBtn').addEventListener('click', async () => {
+        document.getElementById('ssRefreshBtn').disabled = true;
+        document.getElementById('ssLoadingMsg').style.display = '';
+        document.getElementById('ssGallery').style.display = 'none';
+        document.getElementById('ssGalleryEmpty').style.display = 'none';
+        await loadScenarioScreenshots();
+        document.getElementById('ssRefreshBtn').disabled = false;
+    });
+
+    document.getElementById('ssStepFilter').addEventListener('change', renderScreenshots);
+    document.getElementById('ssStatusFilter').addEventListener('change', renderScreenshots);
+
+    async function loadScenarioScreenshots() {
+        try {
+            const res  = await fetch('/api/browser/screenshots');
+            const data = await res.json();
+            allScreenshots = (data.files || []).filter(f => String(f.scenarioId) === String(scenario.id));
+
+            // 단계 필터 옵션 갱신
+            const stepSel = document.getElementById('ssStepFilter');
+            const currentStep = stepSel.value;
+            const stepOrders = [...new Set(allScreenshots.map(f => f.stepOrder).filter(v => v != null))].sort((a, b) => a - b);
+            stepSel.innerHTML = '<option value="">전체 단계</option>' +
+                stepOrders.map(o => `<option value="${o}" ${String(o) === currentStep ? 'selected' : ''}>${o}단계</option>`).join('');
+
+            document.getElementById('ssLoadingMsg').style.display = 'none';
+            renderScreenshots();
+        } catch(e) {
+            document.getElementById('ssLoadingMsg').textContent = '불러오기 실패: ' + e.message;
+        }
+    }
+
+    function renderScreenshots() {
+        const gallery   = document.getElementById('ssGallery');
+        const empty     = document.getElementById('ssGalleryEmpty');
+        const stepVal   = document.getElementById('ssStepFilter').value;
+        const statusVal = document.getElementById('ssStatusFilter').value;
+
+        const filtered = allScreenshots.filter(f => {
+            if (stepVal   && String(f.stepOrder)  !== stepVal)   return false;
+            if (statusVal && f.stepStatus !== statusVal) return false;
+            return true;
+        });
+
+        gallery.innerHTML = '';
+        if (filtered.length === 0) {
+            gallery.style.display = 'none';
+            empty.style.display   = '';
+            empty.textContent     = allScreenshots.length === 0
+                ? '이 시나리오에 연결된 스크린샷이 없습니다.'
+                : '조건에 맞는 스크린샷이 없습니다.';
+            return;
+        }
+        gallery.style.display = 'grid';
+        empty.style.display   = 'none';
+
+        const sorted = [...filtered].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+        sorted.forEach(f => {
+            const card = document.createElement('div');
+            card.className = 'ss-card';
+            const url       = '/screenshots/' + f.name;
+            const date      = new Date(f.createdAt).toLocaleString('ko-KR');
+            const stepLabel = f.stepOrder != null ? `${f.stepOrder}단계` : '단계 정보 없음';
+            const stepInfo  = scenario.steps.find(s => s.order === f.stepOrder);
+            const stepName  = stepInfo ? (stepInfo.labelText || stepInfo.idName || '') : '';
+            const statusBadge = f.stepStatus === 'success'
+                ? `<span class="badge badge-success" style="font-size:10px;">✓ 성공</span>`
+                : f.stepStatus === 'error'
+                    ? `<span class="badge badge-error" style="font-size:10px;">✗ 실패</span>`
+                    : '';
+            card.innerHTML = `
+                <img src="${escapeHtml(url)}" alt="${escapeHtml(f.name)}" loading="lazy" />
+                <div class="ss-card-info">
+                    <div class="ss-card-step">📍 ${escapeHtml(stepLabel)} ${statusBadge}</div>
+                    ${stepName ? `<div style="font-size:11px;color:#555;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(stepName)}">${escapeHtml(stepName)}</div>` : ''}
+                    <div class="ss-card-date">📅 ${escapeHtml(date)}</div>
+                    <button class="ss-del-btn" data-name="${escapeHtml(f.name)}" type="button">🗑 삭제</button>
+                </div>
+            `;
+            card.querySelector('img').addEventListener('click', () => openLightbox(url, `${stepLabel}${stepName ? ' · ' + stepName : ''}`));
+            card.querySelector('.ss-del-btn').addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const name = e.currentTarget.dataset.name;
+                if (!confirm(`삭제하시겠습니까?`)) return;
+                const res  = await fetch('/api/browser/screenshots/' + encodeURIComponent(name), { method: 'DELETE' });
+                const data = await res.json();
+                if (data.ok) await loadScenarioScreenshots();
+                else alert('삭제 실패: ' + (data.error || ''));
+            });
+            gallery.appendChild(card);
+        });
+    }
+
+    // ── 편집 모드 ─────────────────────────────────────────────────────
+    let editMode = false;
+    let editSteps = [];
+
+    document.getElementById('editToggleBtn').addEventListener('click', openEditMode);
+    document.getElementById('editCancelBtn').addEventListener('click', closeEditMode);
+    document.getElementById('editSaveBtn').addEventListener('click', saveEdit);
+    document.getElementById('addStepBtn').addEventListener('click', addStep);
+
+    function openEditMode() {
+        editMode = true;
+        document.getElementById('editName').value       = scenario.name;
+        document.getElementById('editUrl').value        = scenario.url;
+        document.getElementById('editBrowser').value    = scenario.browser;
+        document.getElementById('editTimeout').value    = scenario.timeout;
+        document.getElementById('editHeadless').checked = scenario.headless;
+        editSteps = scenario.steps.map(s => ({ ...s }));
+        renderEditSteps();
+        document.getElementById('editPanel').style.display = '';
+        document.getElementById('editPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        document.getElementById('editToggleBtn').textContent = '✏️ 편집 중...';
+        document.getElementById('editToggleBtn').disabled = true;
+    }
+
+    function closeEditMode() {
+        editMode = false;
+        editSteps = [];
+        document.getElementById('editPanel').style.display = 'none';
+        document.getElementById('editToggleBtn').textContent = '✏️ 편집';
+        document.getElementById('editToggleBtn').disabled = false;
+    }
+
+    function renderEditSteps() {
+        const tbody = document.getElementById('editStepsBody');
+        tbody.innerHTML = '';
+        editSteps.forEach((s, i) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td style="text-align:center; font-weight:bold; color:#666;">${i + 1}</td>
+                <td><input class="edit-input-sm" data-field="labelText" value="${escapeHtml(s.labelText || '')}" placeholder="레이블" /></td>
+                <td>
+                    <select class="edit-input-sm" data-field="interactionType">
+                        <option value="click"  ${s.interactionType === 'click'  ? 'selected' : ''}>click</option>
+                        <option value="fill"   ${s.interactionType === 'fill'   ? 'selected' : ''}>fill</option>
+                        <option value="select" ${s.interactionType === 'select' ? 'selected' : ''}>select</option>
+                    </select>
+                </td>
+                <td><input class="edit-input-sm" data-field="selector" value="${escapeHtml(s.selector || '')}" placeholder="CSS 셀렉터" /></td>
+                <td><input class="edit-input-sm" data-field="fillText" value="${escapeHtml(s.fillText || '')}" placeholder="입력값" /></td>
+                <td><input class="edit-input-sm" data-field="waitMs" type="number" min="0" step="100" value="${s.waitMs ?? 500}" style="width:70px;" /></td>
+                <td><button class="step-del-btn" data-idx="${i}">삭제</button></td>
+            `;
+            // 필드 변경 동기화
+            tr.querySelectorAll('[data-field]').forEach(el => {
+                const sync = () => { editSteps[i][el.dataset.field] = el.type === 'number' ? Number(el.value) : el.value; };
+                el.addEventListener('input', sync);
+                el.addEventListener('change', sync);
+            });
+            // 삭제
+            tr.querySelector('.step-del-btn').addEventListener('click', () => {
+                if (!confirm(`${i + 1}단계를 삭제하시겠습니까?`)) return;
+                editSteps.splice(i, 1);
+                editSteps.forEach((s, j) => { s.order = j + 1; });
+                renderEditSteps();
+            });
+            tbody.appendChild(tr);
+        });
+    }
+
+    function addStep() {
+        const selector    = document.getElementById('addSelector').value.trim();
+        const interaction = document.getElementById('addInteraction').value;
+        const label       = document.getElementById('addLabel').value.trim();
+        const fillText    = document.getElementById('addFillText').value.trim();
+        if (!selector) { alert('셀렉터를 입력해주세요.'); return; }
+        editSteps.push({
+            order:           editSteps.length + 1,
+            selector,
+            interactionType: interaction,
+            tag:             '-', idName: '-',
+            labelText:       label || selector.substring(0, 30),
+            fillText:        fillText || null,
+            waitMs:          500
+        });
+        document.getElementById('addSelector').value = '';
+        document.getElementById('addLabel').value    = '';
+        document.getElementById('addFillText').value = '';
+        renderEditSteps();
+    }
+
+    async function saveEdit() {
+        const name    = document.getElementById('editName').value.trim();
+        const url     = document.getElementById('editUrl').value.trim();
+        const browser = document.getElementById('editBrowser').value;
+        const timeout = Number(document.getElementById('editTimeout').value);
+        const headless = document.getElementById('editHeadless').checked;
+        if (!name)  { alert('시나리오 이름을 입력해주세요.'); return; }
+        if (!url)   { alert('URL을 입력해주세요.'); return; }
+        if (timeout < 1000) { alert('timeout은 1000ms 이상이어야 합니다.'); return; }
+        if (editSteps.length === 0) { alert('단계가 하나도 없습니다.'); return; }
+        editSteps.forEach((s, j) => { s.order = j + 1; });
+        const updated = { ...scenario, name, url, browser, timeout, headless, steps: editSteps };
+        document.getElementById('editSaveBtn').disabled = true;
+        document.getElementById('editSaveBtn').textContent = '⏳ 저장 중...';
+        try {
+            const res = await fetch('/api/scenarios/' + scenario.id, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updated)
+            });
+            if (!res.ok) throw new Error('서버 오류 ' + res.status);
+            scenario = updated;
+            renderInfo();
+            resetResults(true);
+            closeEditMode();
+        } catch(e) {
+            alert('저장 실패: ' + e.message);
+        } finally {
+            document.getElementById('editSaveBtn').disabled = false;
+            document.getElementById('editSaveBtn').textContent = '💾 저장';
+        }
+    }
+</script>
+</body>
+</html>

@@ -1,5 +1,6 @@
 package io.github.jastname.playwrighttester.service;
 
+import io.github.jastname.playwrighttester.config.ScreenshotProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -24,6 +25,12 @@ import java.time.temporal.ChronoUnit;
 @EnableScheduling
 public class ScreenshotCleanupScheduler {
 
+    private final ScreenshotProperties screenshotProperties;
+
+    public ScreenshotCleanupScheduler(ScreenshotProperties screenshotProperties) {
+        this.screenshotProperties = screenshotProperties;
+    }
+
     @Value("${screenshot.cleanup.enabled:true}")
     private boolean enabled;
 
@@ -38,7 +45,7 @@ public class ScreenshotCleanupScheduler {
             return;
         }
 
-        Path dir = Paths.get("screenshots");
+        Path dir = screenshotProperties.getDirectoryPath();
         if (!Files.exists(dir)) return;
 
         Instant cutoff = Instant.now().minus(retainDays, ChronoUnit.DAYS);

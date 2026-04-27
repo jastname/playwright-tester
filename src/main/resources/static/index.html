@@ -124,11 +124,21 @@
                     <label>현재 적용 경로</label>
                     <div id="screenshotDirectoryCurrent" class="result-box" style="min-height:auto;">-</div>
                 </div>
+                <div class="form-row full">
+                    <label for="scenarioFileInput">시나리오 파일 경로</label>
+                    <input id="scenarioFileInput" type="text" placeholder="예: D:\playwright-data\scenarios.json" />
+                </div>
+                <div class="form-row full">
+                    <label>현재 시나리오 파일</label>
+                    <div id="scenarioFileCurrent" class="result-box" style="min-height:auto;">-</div>
+                </div>
             </div>
 
             <div class="button-row">
                 <button id="screenshotDirectorySaveBtn" type="button" class="btn-accent">저장</button>
                 <button id="screenshotDirectoryReloadBtn" type="button" class="btn-secondary">다시 불러오기</button>
+                <button id="scenarioFileSaveBtn" type="button" class="btn-accent">시나리오 파일 저장</button>
+                <button id="scenarioFileReloadBtn" type="button" class="btn-secondary">시나리오 파일 다시 불러오기</button>
             </div>
             <div id="settingsStatusMessage" class="status"></div>
         </div>
@@ -277,7 +287,10 @@
             tab.classList.add('active');
             document.getElementById('page-' + tab.dataset.page).classList.add('active');
             if (tab.dataset.page === 'screenshots') loadScreenshotStats();
-            if (tab.dataset.page === 'settings') loadScreenshotDirectory();
+            if (tab.dataset.page === 'settings') {
+                loadScreenshotDirectory();
+                loadScenarioFilePath();
+            }
         });
     });
 
@@ -313,6 +326,10 @@
     const screenshotDirectoryCurrent = document.getElementById('screenshotDirectoryCurrent');
     const screenshotDirectorySaveBtn = document.getElementById('screenshotDirectorySaveBtn');
     const screenshotDirectoryReloadBtn = document.getElementById('screenshotDirectoryReloadBtn');
+    const scenarioFileInput = document.getElementById('scenarioFileInput');
+    const scenarioFileCurrent = document.getElementById('scenarioFileCurrent');
+    const scenarioFileSaveBtn = document.getElementById('scenarioFileSaveBtn');
+    const scenarioFileReloadBtn = document.getElementById('scenarioFileReloadBtn');
     const settingsStatusMessage = document.getElementById('settingsStatusMessage');
 
     const scenarioModal      = document.getElementById('scenarioModal');
@@ -376,12 +393,65 @@
         }
     }
 
+    async function loadScenarioFilePath() {
+        if (!scenarioFileInput) return;
+        settingsStatusMessage.textContent = '';
+        try {
+            const res = await fetch('/api/scenarios/settings/path');
+            const data = await res.json();
+            scenarioFileInput.value = data.path || '';
+            scenarioFileCurrent.textContent = data.absolutePath || data.path || '-';
+        } catch (e) {
+            settingsStatusMessage.textContent = '시나리오 파일 경로를 불러오지 못했습니다.';
+            settingsStatusMessage.className = 'status error';
+        }
+    }
+
+    async function saveScenarioFilePath() {
+        const path = scenarioFileInput.value.trim();
+        if (!path) {
+            settingsStatusMessage.textContent = '시나리오 파일 경로를 입력하세요.';
+            settingsStatusMessage.className = 'status error';
+            return;
+        }
+
+        scenarioFileSaveBtn.disabled = true;
+        settingsStatusMessage.textContent = '저장 중...';
+        settingsStatusMessage.className = 'status';
+        try {
+            const res = await fetch('/api/scenarios/settings/path', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path })
+            });
+            const data = await res.json();
+            if (!res.ok || data.ok === false) throw new Error(data.error || '저장 실패');
+            scenarioFileInput.value = data.path || path;
+            scenarioFileCurrent.textContent = data.absolutePath || data.path || path;
+            scenarios = [];
+            await loadScenarios();
+            settingsStatusMessage.textContent = '저장되었습니다. 다음 시나리오 저장부터 이 파일을 사용합니다.';
+            settingsStatusMessage.className = 'status success';
+        } catch (e) {
+            settingsStatusMessage.textContent = '저장 실패: ' + e.message;
+            settingsStatusMessage.className = 'status error';
+        } finally {
+            scenarioFileSaveBtn.disabled = false;
+        }
+    }
+
     screenshotDirectorySaveBtn?.addEventListener('click', saveScreenshotDirectory);
     screenshotDirectoryReloadBtn?.addEventListener('click', loadScreenshotDirectory);
+    scenarioFileSaveBtn?.addEventListener('click', saveScenarioFilePath);
+    scenarioFileReloadBtn?.addEventListener('click', loadScenarioFilePath);
     screenshotDirectoryInput?.addEventListener('keydown', e => {
         if (e.key === 'Enter') saveScreenshotDirectory();
     });
+    scenarioFileInput?.addEventListener('keydown', e => {
+        if (e.key === 'Enter') saveScenarioFilePath();
+    });
     loadScreenshotDirectory();
+    loadScenarioFilePath();
 
     // ── 시나리오 서버 저장 ───────────────────────────────────────────
     async function persistScenarios() {
@@ -399,11 +469,11 @@
     }
 
     // ── 페이지 로드 시 서버에서 불러오기 ─────────────────────────────
-    (async function loadScenarios() {
+    async function loadScenarios() {
         try {
             const res = await fetch('/api/scenarios');
             const data = await res.json();
-            if (Array.isArray(data) && data.length > 0) {
+            if (Array.isArray(data)) {
                 scenarios = data;
                 renderScenarioList();
                 setStatus(`✅ 저장된 시나리오 ${data.length}개를 불러왔습니다.`, 'success');
@@ -411,7 +481,8 @@
         } catch(e) {
             console.warn('[Scenarios] load error:', e);
         }
-    })();
+    }
+    loadScenarios();
 
     // inspector state
     let inspectorSessionId  = null;

@@ -30,6 +30,29 @@ public class ScenarioController {
     }
 
     /** ID로 시나리오 조회 */
+    @GetMapping(value = "/settings/path", produces = MediaType.APPLICATION_JSON_VALUE)
+    public Map<String, Object> getScenarioPath() {
+        return Map.of(
+                "path", scenarioStore.getConfiguredPath(),
+                "absolutePath", scenarioStore.getSavePath().toString()
+        );
+    }
+
+    @PutMapping(value = "/settings/path", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public Map<String, Object> setScenarioPath(@RequestBody Map<String, Object> body) throws java.io.IOException {
+        Object pathValue = body.get("path");
+        if (!(pathValue instanceof String path) || path.isBlank()) {
+            return Map.of("ok", false, "error", "path is required");
+        }
+
+        scenarioStore.saveScenarioPath(path.trim());
+        return Map.of(
+                "ok", true,
+                "path", scenarioStore.getConfiguredPath(),
+                "absolutePath", scenarioStore.getSavePath().toString()
+        );
+    }
+
     @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<String> getById(@PathVariable("id") long id) {
         String json = scenarioStore.loadById(id);

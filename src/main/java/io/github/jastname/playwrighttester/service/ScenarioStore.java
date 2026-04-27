@@ -13,42 +13,50 @@ import java.nio.file.Paths;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-/**
- * 시나리오를 JSON 파일로 영속화합니다.
- * 파일 위치: {workingDir}/scenarios/scenarios.json
- *
- * 성능 개선: 파일 내용을 메모리(ArrayNode)에 캐싱합니다.
- * - 읽기: 캐시에서 즉시 반환 (파일 I/O 없음)
- * - 쓰기: 파일 저장 후 캐시 갱신
- * - ReadWriteLock으로 동시 접근 안전 보장
- */
 @Service
 public class ScenarioStore {
 
-    private static final Path SAVE_PATH = Paths.get("scenarios", "scenarios.json");
-    private final ObjectMapper mapper = new ObjectMapper();
+    private static final Path DEFAULT_SAVE_PATH = Paths.get("scenarios", "scenarios.json");
+    private static final Path RUNTIME_CONFIG_PATH = Paths.get("settings", "scenario-file.txt");
 
-    /** 메모리 캐시 */
-    private volatile ArrayNode cache = null;
+    private final ObjectMapper mapper = new ObjectMapper();
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
+
+    private volatile Path savePath = DEFAULT_SAVE_PATH;
+    private volatile ArrayNode cache = null;
 
     @PostConstruct
     public void init() {
+        loadSavedPath();
         try {
-            Files.createDirectories(SAVE_PATH.getParent());
-            if (!Files.exists(SAVE_PATH)) Files.writeString(SAVE_PATH, "[]");
-            System.out.println("[ScenarioStore] 시나리오 파일: " + SAVE_PATH.toAbsolutePath());
-            // 초기 캐시 로드
-            warmCache();
+            ensureScenarioFile();
         } catch (IOException e) {
             System.err.println("[ScenarioStore] init error: " + e.getMessage());
             cache = mapper.createArrayNode();
         }
+        warmCache();
+    }
+
+    private void loadSavedPath() {
+        try {
+            if (Files.exists(RUNTIME_CONFIG_PATH)) {
+                setSavePath(Files.readString(RUNTIME_CONFIG_PATH));
+            }
+        } catch (IOException e) {
+            System.err.println("[ScenarioStore] load path error: " + e.getMessage());
+        }
+    }
+
+    private void ensureScenarioFile() throws IOException {
+        Path parent = savePath.getParent();
+        if (parent != null) Files.createDirectories(parent);
+        if (!Files.exists(savePath)) Files.writeString(savePath, "[]");
+        System.out.println("[ScenarioStore] scenario file: " + savePath.toAbsolutePath());
     }
 
     private void warmCache() {
         try {
-            String raw = Files.readString(SAVE_PATH);
+            String raw = Files.readString(savePath);
             JsonNode node = mapper.readTree(raw);
             cache = node.isArray() ? (ArrayNode) node : mapper.createArrayNode();
         } catch (Exception e) {
@@ -57,7 +65,6 @@ public class ScenarioStore {
         }
     }
 
-    /** 캐시에서 JSON 문자열 반환 (파일 I/O 없음) */
     public String loadRaw() {
         lock.readLock().lock();
         try {
@@ -68,11 +75,11 @@ public class ScenarioStore {
         }
     }
 
-    /** 파일 저장 후 캐시 갱신 */
     public void saveRaw(String json) {
         lock.writeLock().lock();
         try {
-            Files.writeString(SAVE_PATH, json);
+            ensureScenarioFile();
+            Files.writeString(savePath, json);
             JsonNode node = mapper.readTree(json);
             cache = node.isArray() ? (ArrayNode) node : mapper.createArrayNode();
         } catch (Exception e) {
@@ -82,7 +89,6 @@ public class ScenarioStore {
         }
     }
 
-    /** ID로 단일 시나리오 반환 – 캐시 탐색 */
     public String loadById(long id) {
         lock.readLock().lock();
         try {
@@ -100,7 +106,6 @@ public class ScenarioStore {
         return null;
     }
 
-    /** ID로 시나리오를 새 JSON으로 교체 후 저장 */
     public boolean updateById(long id, String updatedJson) {
         lock.writeLock().lock();
         try {
@@ -117,7 +122,7 @@ public class ScenarioStore {
             }
             if (found) {
                 cache = result;
-                Files.writeString(SAVE_PATH, mapper.writeValueAsString(result));
+                Files.writeString(savePath, mapper.writeValueAsString(result));
             }
             return found;
         } catch (Exception e) {
@@ -128,7 +133,6 @@ public class ScenarioStore {
         }
     }
 
-    /** ID로 시나리오 삭제 후 저장 */
     public boolean deleteById(long id) {
         lock.writeLock().lock();
         try {
@@ -136,12 +140,15 @@ public class ScenarioStore {
             ArrayNode result = mapper.createArrayNode();
             boolean found = false;
             for (JsonNode node : cache) {
-                if (node.path("id").asLong() == id) { found = true; }
-                else result.add(node);
+                if (node.path("id").asLong() == id) {
+                    found = true;
+                } else {
+                    result.add(node);
+                }
             }
             if (found) {
                 cache = result;
-                Files.writeString(SAVE_PATH, mapper.writeValueAsString(result));
+                Files.writeString(savePath, mapper.writeValueAsString(result));
             }
             return found;
         } catch (Exception e) {
@@ -152,5 +159,32 @@ public class ScenarioStore {
         }
     }
 
-    public Path getSavePath() { return SAVE_PATH.toAbsolutePath(); }
+    public Path getSavePath() {
+        return savePath.toAbsolutePath().normalize();
+    }
+
+    public String getConfiguredPath() {
+        return savePath.toString();
+    }
+
+    public void saveScenarioPath(String path) throws IOException {
+        lock.writeLock().lock();
+        try {
+            setSavePath(path);
+            ensureScenarioFile();
+            Files.createDirectories(RUNTIME_CONFIG_PATH.getParent());
+            Files.writeString(RUNTIME_CONFIG_PATH, savePath.toString());
+            warmCache();
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    private void setSavePath(String path) {
+        if (path == null || path.isBlank()) {
+            savePath = DEFAULT_SAVE_PATH;
+            return;
+        }
+        savePath = Paths.get(path.trim()).toAbsolutePath().normalize();
+    }
 }

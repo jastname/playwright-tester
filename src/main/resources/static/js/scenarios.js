@@ -11,7 +11,7 @@ function renderScenarioList() {
         ).join(' ');
         card.innerHTML = `
             <div class="scenario-card-body">
-                <div class="scenario-card-title">시나리오 ${escapeHtml(sc.name)}</div>
+                <div class="scenario-card-title">${escapeHtml(sc.name)}</div>
                 <div class="scenario-card-meta">
                     <span>URL ${escapeHtml(sc.url)}</span>
                     <span>브라우저 ${escapeHtml(sc.browser)}</span>

@@ -117,20 +117,12 @@
 
             <div class="grid">
                 <div class="form-row full">
-                    <label for="screenshotDirectoryInput">스크린샷 저장 경로</label>
+                    <label for="screenshotDirectoryInput">스크린샷 저장 경로 <span id="screenshotDirectoryCurrent" style="color:#888; font-weight:400;"></span></label>
                     <input id="screenshotDirectoryInput" type="text" placeholder="예: D:\playwright-screenshots" />
                 </div>
                 <div class="form-row full">
-                    <label>현재 적용 경로</label>
-                    <div id="screenshotDirectoryCurrent" class="result-box" style="min-height:auto;">-</div>
-                </div>
-                <div class="form-row full">
-                    <label for="scenarioFileInput">시나리오 파일 경로</label>
+                    <label for="scenarioFileInput">시나리오 파일 경로 <span id="scenarioFileCurrent" style="color:#888; font-weight:400;"></span></label>
                     <input id="scenarioFileInput" type="text" placeholder="예: D:\playwright-data\scenarios.json" />
-                </div>
-                <div class="form-row full">
-                    <label>현재 시나리오 파일</label>
-                    <div id="scenarioFileCurrent" class="result-box" style="min-height:auto;">-</div>
                 </div>
             </div>
 
@@ -351,7 +343,8 @@
             const res = await fetch('/api/browser/settings/screenshot-directory');
             const data = await res.json();
             screenshotDirectoryInput.value = data.directory || '';
-            screenshotDirectoryCurrent.textContent = data.absolutePath || data.directory || '-';
+            const current = data.absolutePath || data.directory || '-';
+            screenshotDirectoryCurrent.textContent = '(' + current + ')';
         } catch (e) {
             settingsStatusMessage.textContent = '스크린샷 경로를 불러오지 못했습니다.';
             settingsStatusMessage.className = 'status error';
@@ -377,7 +370,8 @@
             const data = await res.json();
             if (!res.ok || data.ok === false) throw new Error(data.error || '저장 실패');
             screenshotDirectoryInput.value = data.directory || directory;
-            screenshotDirectoryCurrent.textContent = data.absolutePath || data.directory || directory;
+            const current = data.absolutePath || data.directory || directory;
+            screenshotDirectoryCurrent.textContent = '(' + current + ')';
             settingsStatusMessage.textContent = '저장되었습니다. 다음 스크린샷부터 이 경로에 생성됩니다.';
             settingsStatusMessage.className = 'status success';
             return true;
@@ -395,7 +389,8 @@
             const res = await fetch('/api/scenarios/settings/path');
             const data = await res.json();
             scenarioFileInput.value = data.path || '';
-            scenarioFileCurrent.textContent = data.absolutePath || data.path || '-';
+            const current = data.absolutePath || data.path || '-';
+            scenarioFileCurrent.textContent = '(' + current + ')';
         } catch (e) {
             settingsStatusMessage.textContent = '시나리오 파일 경로를 불러오지 못했습니다.';
             settingsStatusMessage.className = 'status error';
@@ -421,7 +416,8 @@
             const data = await res.json();
             if (!res.ok || data.ok === false) throw new Error(data.error || '저장 실패');
             scenarioFileInput.value = data.path || path;
-            scenarioFileCurrent.textContent = data.absolutePath || data.path || path;
+            const current = data.absolutePath || data.path || path;
+            scenarioFileCurrent.textContent = '(' + current + ')';
             scenarios = [];
             await loadScenarios();
             settingsStatusMessage.textContent = '저장되었습니다. 다음 시나리오 저장부터 이 파일을 사용합니다.';

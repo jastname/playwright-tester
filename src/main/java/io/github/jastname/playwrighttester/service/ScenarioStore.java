@@ -3,6 +3,7 @@ package io.github.jastname.playwrighttester.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import io.github.jastname.playwrighttester.config.AppSettingsStore;
 import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
 
@@ -17,13 +18,18 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public class ScenarioStore {
 
     private static final Path DEFAULT_SAVE_PATH = Paths.get("scenarios", "scenarios.json");
-    private static final Path RUNTIME_CONFIG_PATH = Paths.get("settings", "scenario-file.txt");
+    private static final String SETTINGS_KEY = "scenario.file";
 
+    private final AppSettingsStore appSettingsStore;
     private final ObjectMapper mapper = new ObjectMapper();
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
     private volatile Path savePath = DEFAULT_SAVE_PATH;
     private volatile ArrayNode cache = null;
+
+    public ScenarioStore(AppSettingsStore appSettingsStore) {
+        this.appSettingsStore = appSettingsStore;
+    }
 
     @PostConstruct
     public void init() {
@@ -38,13 +44,7 @@ public class ScenarioStore {
     }
 
     private void loadSavedPath() {
-        try {
-            if (Files.exists(RUNTIME_CONFIG_PATH)) {
-                setSavePath(Files.readString(RUNTIME_CONFIG_PATH));
-            }
-        } catch (IOException e) {
-            System.err.println("[ScenarioStore] load path error: " + e.getMessage());
-        }
+        setSavePath(appSettingsStore.get(SETTINGS_KEY));
     }
 
     private void ensureScenarioFile() throws IOException {
@@ -172,8 +172,7 @@ public class ScenarioStore {
         try {
             setSavePath(path);
             ensureScenarioFile();
-            Files.createDirectories(RUNTIME_CONFIG_PATH.getParent());
-            Files.writeString(RUNTIME_CONFIG_PATH, savePath.toString());
+            appSettingsStore.set(SETTINGS_KEY, savePath.toString());
             warmCache();
         } finally {
             lock.writeLock().unlock();

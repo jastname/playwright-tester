@@ -4,23 +4,23 @@ import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
 @Component
 public class ScreenshotProperties {
-    private static final Path RUNTIME_CONFIG_PATH = Paths.get("settings", "screenshot-directory.txt");
+    private static final String SETTINGS_KEY = "screenshot.directory";
 
+    private final AppSettingsStore appSettingsStore;
     private String directory = "screenshots";
+
+    public ScreenshotProperties(AppSettingsStore appSettingsStore) {
+        this.appSettingsStore = appSettingsStore;
+    }
 
     @PostConstruct
     public void loadSavedDirectory() {
-        try {
-            if (Files.exists(RUNTIME_CONFIG_PATH)) {
-                setDirectory(Files.readString(RUNTIME_CONFIG_PATH));
-            }
-        } catch (IOException ignored) {}
+        setDirectory(appSettingsStore.get(SETTINGS_KEY));
     }
 
     public String getDirectory() {
@@ -41,7 +41,6 @@ public class ScreenshotProperties {
 
     public void saveDirectory(String directory) throws IOException {
         setDirectory(directory);
-        Files.createDirectories(RUNTIME_CONFIG_PATH.getParent());
-        Files.writeString(RUNTIME_CONFIG_PATH, this.directory);
+        appSettingsStore.set(SETTINGS_KEY, this.directory);
     }
 }

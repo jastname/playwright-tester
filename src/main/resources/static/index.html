@@ -135,10 +135,8 @@
             </div>
 
             <div class="button-row">
-                <button id="screenshotDirectorySaveBtn" type="button" class="btn-accent">저장</button>
-                <button id="screenshotDirectoryReloadBtn" type="button" class="btn-secondary">다시 불러오기</button>
-                <button id="scenarioFileSaveBtn" type="button" class="btn-accent">시나리오 파일 저장</button>
-                <button id="scenarioFileReloadBtn" type="button" class="btn-secondary">시나리오 파일 다시 불러오기</button>
+                <button id="settingsSaveBtn" type="button" class="btn-accent">저장</button>
+                <button id="settingsReloadBtn" type="button" class="btn-secondary">다시 불러오기</button>
             </div>
             <div id="settingsStatusMessage" class="status"></div>
         </div>
@@ -324,12 +322,10 @@
     const scenarioList         = document.getElementById('scenarioList');
     const screenshotDirectoryInput = document.getElementById('screenshotDirectoryInput');
     const screenshotDirectoryCurrent = document.getElementById('screenshotDirectoryCurrent');
-    const screenshotDirectorySaveBtn = document.getElementById('screenshotDirectorySaveBtn');
-    const screenshotDirectoryReloadBtn = document.getElementById('screenshotDirectoryReloadBtn');
     const scenarioFileInput = document.getElementById('scenarioFileInput');
     const scenarioFileCurrent = document.getElementById('scenarioFileCurrent');
-    const scenarioFileSaveBtn = document.getElementById('scenarioFileSaveBtn');
-    const scenarioFileReloadBtn = document.getElementById('scenarioFileReloadBtn');
+    const settingsSaveBtn = document.getElementById('settingsSaveBtn');
+    const settingsReloadBtn = document.getElementById('settingsReloadBtn');
     const settingsStatusMessage = document.getElementById('settingsStatusMessage');
 
     const scenarioModal      = document.getElementById('scenarioModal');
@@ -367,10 +363,9 @@
         if (!directory) {
             settingsStatusMessage.textContent = '저장 경로를 입력하세요.';
             settingsStatusMessage.className = 'status error';
-            return;
+            return false;
         }
 
-        screenshotDirectorySaveBtn.disabled = true;
         settingsStatusMessage.textContent = '저장 중...';
         settingsStatusMessage.className = 'status';
         try {
@@ -385,11 +380,11 @@
             screenshotDirectoryCurrent.textContent = data.absolutePath || data.directory || directory;
             settingsStatusMessage.textContent = '저장되었습니다. 다음 스크린샷부터 이 경로에 생성됩니다.';
             settingsStatusMessage.className = 'status success';
+            return true;
         } catch (e) {
             settingsStatusMessage.textContent = '저장 실패: ' + e.message;
             settingsStatusMessage.className = 'status error';
-        } finally {
-            screenshotDirectorySaveBtn.disabled = false;
+            return false;
         }
     }
 
@@ -412,10 +407,9 @@
         if (!path) {
             settingsStatusMessage.textContent = '시나리오 파일 경로를 입력하세요.';
             settingsStatusMessage.className = 'status error';
-            return;
+            return false;
         }
 
-        scenarioFileSaveBtn.disabled = true;
         settingsStatusMessage.textContent = '저장 중...';
         settingsStatusMessage.className = 'status';
         try {
@@ -432,26 +426,44 @@
             await loadScenarios();
             settingsStatusMessage.textContent = '저장되었습니다. 다음 시나리오 저장부터 이 파일을 사용합니다.';
             settingsStatusMessage.className = 'status success';
+            return true;
         } catch (e) {
             settingsStatusMessage.textContent = '저장 실패: ' + e.message;
             settingsStatusMessage.className = 'status error';
-        } finally {
-            scenarioFileSaveBtn.disabled = false;
+            return false;
         }
     }
 
-    screenshotDirectorySaveBtn?.addEventListener('click', saveScreenshotDirectory);
-    screenshotDirectoryReloadBtn?.addEventListener('click', loadScreenshotDirectory);
-    scenarioFileSaveBtn?.addEventListener('click', saveScenarioFilePath);
-    scenarioFileReloadBtn?.addEventListener('click', loadScenarioFilePath);
+    async function loadSettings() {
+        await loadScreenshotDirectory();
+        await loadScenarioFilePath();
+    }
+
+    async function saveSettings() {
+        settingsSaveBtn.disabled = true;
+        settingsStatusMessage.textContent = '저장 중...';
+        settingsStatusMessage.className = 'status';
+        try {
+            const screenshotSaved = await saveScreenshotDirectory();
+            if (!screenshotSaved) return;
+            const scenarioSaved = await saveScenarioFilePath();
+            if (!scenarioSaved) return;
+            settingsStatusMessage.textContent = '설정이 저장되었습니다.';
+            settingsStatusMessage.className = 'status success';
+        } finally {
+            settingsSaveBtn.disabled = false;
+        }
+    }
+
+    settingsSaveBtn?.addEventListener('click', saveSettings);
+    settingsReloadBtn?.addEventListener('click', loadSettings);
     screenshotDirectoryInput?.addEventListener('keydown', e => {
-        if (e.key === 'Enter') saveScreenshotDirectory();
+        if (e.key === 'Enter') saveSettings();
     });
     scenarioFileInput?.addEventListener('keydown', e => {
-        if (e.key === 'Enter') saveScenarioFilePath();
+        if (e.key === 'Enter') saveSettings();
     });
-    loadScreenshotDirectory();
-    loadScenarioFilePath();
+    loadSettings();
 
     // ── 시나리오 서버 저장 ───────────────────────────────────────────
     async function persistScenarios() {

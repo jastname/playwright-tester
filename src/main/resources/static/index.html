@@ -14,6 +14,7 @@
     <div class="page-tabs">
         <div class="page-tab active" data-page="test">🧪 테스트</div>
         <div class="page-tab" data-page="screenshots">🖼 스크린샷 관리</div>
+        <div class="page-tab" data-page="settings">설정</div>
     </div>
 
     <!-- ═══ 탭 1: 테스트 ═══ -->
@@ -106,6 +107,30 @@
 
             <div id="screenshotGallery" class="screenshot-gallery"></div>
             <div id="screenshotGalleryEmpty" class="screenshot-gallery-empty" style="display:none;">스크린샷이 없습니다.</div>
+        </div>
+    </div>
+
+    <div class="page-tab-content" id="page-settings">
+        <div class="screenshot-management">
+            <h2>설정</h2>
+            <p class="description">스크린샷을 저장할 서버 파일 시스템 경로를 지정합니다.</p>
+
+            <div class="grid">
+                <div class="form-row full">
+                    <label for="screenshotDirectoryInput">스크린샷 저장 경로</label>
+                    <input id="screenshotDirectoryInput" type="text" placeholder="예: D:\playwright-screenshots" />
+                </div>
+                <div class="form-row full">
+                    <label>현재 적용 경로</label>
+                    <div id="screenshotDirectoryCurrent" class="result-box" style="min-height:auto;">-</div>
+                </div>
+            </div>
+
+            <div class="button-row">
+                <button id="screenshotDirectorySaveBtn" type="button" class="btn-accent">저장</button>
+                <button id="screenshotDirectoryReloadBtn" type="button" class="btn-secondary">다시 불러오기</button>
+            </div>
+            <div id="settingsStatusMessage" class="status"></div>
         </div>
     </div>
 </div>
@@ -252,6 +277,7 @@
             tab.classList.add('active');
             document.getElementById('page-' + tab.dataset.page).classList.add('active');
             if (tab.dataset.page === 'screenshots') loadScreenshotStats();
+            if (tab.dataset.page === 'settings') loadScreenshotDirectory();
         });
     });
 
@@ -283,6 +309,11 @@
     const resultBox            = document.getElementById('resultBox');
     const scenarioSection      = document.getElementById('scenarioSection');
     const scenarioList         = document.getElementById('scenarioList');
+    const screenshotDirectoryInput = document.getElementById('screenshotDirectoryInput');
+    const screenshotDirectoryCurrent = document.getElementById('screenshotDirectoryCurrent');
+    const screenshotDirectorySaveBtn = document.getElementById('screenshotDirectorySaveBtn');
+    const screenshotDirectoryReloadBtn = document.getElementById('screenshotDirectoryReloadBtn');
+    const settingsStatusMessage = document.getElementById('settingsStatusMessage');
 
     const scenarioModal      = document.getElementById('scenarioModal');
     const modalCloseBtn      = document.getElementById('modalCloseBtn');
@@ -299,6 +330,58 @@
     let scannedElements = [];
     let scanParams      = {};
     let scenarios       = [];
+
+    async function loadScreenshotDirectory() {
+        if (!screenshotDirectoryInput) return;
+        settingsStatusMessage.textContent = '';
+        try {
+            const res = await fetch('/api/browser/settings/screenshot-directory');
+            const data = await res.json();
+            screenshotDirectoryInput.value = data.directory || '';
+            screenshotDirectoryCurrent.textContent = data.absolutePath || data.directory || '-';
+        } catch (e) {
+            settingsStatusMessage.textContent = '스크린샷 경로를 불러오지 못했습니다.';
+            settingsStatusMessage.className = 'status error';
+        }
+    }
+
+    async function saveScreenshotDirectory() {
+        const directory = screenshotDirectoryInput.value.trim();
+        if (!directory) {
+            settingsStatusMessage.textContent = '저장 경로를 입력하세요.';
+            settingsStatusMessage.className = 'status error';
+            return;
+        }
+
+        screenshotDirectorySaveBtn.disabled = true;
+        settingsStatusMessage.textContent = '저장 중...';
+        settingsStatusMessage.className = 'status';
+        try {
+            const res = await fetch('/api/browser/settings/screenshot-directory', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ directory })
+            });
+            const data = await res.json();
+            if (!res.ok || data.ok === false) throw new Error(data.error || '저장 실패');
+            screenshotDirectoryInput.value = data.directory || directory;
+            screenshotDirectoryCurrent.textContent = data.absolutePath || data.directory || directory;
+            settingsStatusMessage.textContent = '저장되었습니다. 다음 스크린샷부터 이 경로에 생성됩니다.';
+            settingsStatusMessage.className = 'status success';
+        } catch (e) {
+            settingsStatusMessage.textContent = '저장 실패: ' + e.message;
+            settingsStatusMessage.className = 'status error';
+        } finally {
+            screenshotDirectorySaveBtn.disabled = false;
+        }
+    }
+
+    screenshotDirectorySaveBtn?.addEventListener('click', saveScreenshotDirectory);
+    screenshotDirectoryReloadBtn?.addEventListener('click', loadScreenshotDirectory);
+    screenshotDirectoryInput?.addEventListener('keydown', e => {
+        if (e.key === 'Enter') saveScreenshotDirectory();
+    });
+    loadScreenshotDirectory();
 
     // ── 시나리오 서버 저장 ───────────────────────────────────────────
     async function persistScenarios() {
@@ -554,7 +637,7 @@
         empty.style.display   = 'none';
         filtered.forEach((f, idx) => {
             const realIdx = screenshotFiles.indexOf(f);
-            const url  = '/screenshots/' + f.name;
+            const url  = '/api/browser/screenshots/file/' + f.name;
             const date = new Date(f.createdAt).toLocaleString('ko-KR');
             const kb   = (f.size / 1024).toFixed(1);
             const card = document.createElement('div');
@@ -597,7 +680,7 @@
     }
     function showLightboxAt(idx) {
         const f = screenshotFiles[idx];
-        lightboxImg.src = '/screenshots/' + f.name;
+        lightboxImg.src = '/api/browser/screenshots/file/' + f.name;
         lightboxFilename.textContent = f.name + '  (' + (idx+1) + ' / ' + screenshotFiles.length + ')';
     }
     document.getElementById('lightboxClose').addEventListener('click', () => lightboxOverlay.classList.remove('open'));

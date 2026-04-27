@@ -588,7 +588,7 @@
         sorted.forEach(f => {
             const card = document.createElement('div');
             card.className = 'ss-card';
-            const url       = '/screenshots/' + f.name;
+            const url       = '/api/browser/screenshots/file/' + f.name;
             const date      = new Date(f.createdAt).toLocaleString('ko-KR');
             const stepLabel = f.stepOrder != null ? `${f.stepOrder}단계` : '단계 정보 없음';
             const stepInfo  = scenario.steps.find(s => s.order === f.stepOrder);

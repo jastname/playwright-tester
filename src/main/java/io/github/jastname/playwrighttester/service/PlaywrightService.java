@@ -2,6 +2,7 @@ package io.github.jastname.playwrighttester.service;
 
 import com.microsoft.playwright.*;
 import com.microsoft.playwright.options.WaitUntilState;
+import io.github.jastname.playwrighttester.config.ScreenshotProperties;
 import io.github.jastname.playwrighttester.controller.ScenarioRequest;
 import org.springframework.stereotype.Service;
 import io.github.jastname.playwrighttester.dto.ButtonCandidate;
@@ -11,7 +12,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -23,6 +23,11 @@ import java.util.UUID;
 public class PlaywrightService {
 
     private static final Logger log = LoggerFactory.getLogger(PlaywrightService.class);
+    private final ScreenshotProperties screenshotProperties;
+
+    public PlaywrightService(ScreenshotProperties screenshotProperties) {
+        this.screenshotProperties = screenshotProperties;
+    }
 
     // ── UI 인스펙터: 브라우저에 주입할 스크립트 ───────────────────────────────
     private static final String INSPECTOR_SCRIPT = """
@@ -396,7 +401,7 @@ public class PlaywrightService {
                     String title = page.title();
                     String finalUrl = page.url();
 
-                    Path screenshotDir = Paths.get("screenshots");
+                    Path screenshotDir = screenshotProperties.getDirectoryPath();
                     Files.createDirectories(screenshotDir);
 
                     String fileName = UUID.randomUUID() + ".png";
@@ -419,7 +424,7 @@ public class PlaywrightService {
                     result.put("finalUrl", finalUrl);
                     result.put("durationMs", durationMs);
                     result.put("screenshotPath", screenshotPath.toString().replace("\\", "/"));
-                    result.put("screenshotUrl", "/screenshots/" + fileName);
+                    result.put("screenshotUrl", "/api/browser/screenshots/file/" + fileName);
                     return result;
                 }
             }
@@ -615,14 +620,14 @@ public class PlaywrightService {
                         }
                     }
 
-                    Path screenshotDir = Paths.get("screenshots");
+                    Path screenshotDir = screenshotProperties.getDirectoryPath();
                     Files.createDirectories(screenshotDir);
                     String fileName = UUID.randomUUID() + ".png";
                     Path screenshotPath = screenshotDir.resolve(fileName);
                     page.screenshot(new Page.ScreenshotOptions().setPath(screenshotPath).setFullPage(false));
 
                     result.put("status", "success");
-                    result.put("screenshotUrl", "/screenshots/" + fileName);
+                    result.put("screenshotUrl", "/api/browser/screenshots/file/" + fileName);
                 }
             }
         } catch (Exception e) {
@@ -686,7 +691,7 @@ public class PlaywrightService {
                             new Page.WaitForLoadStateOptions().setTimeout(10000));
                     page.waitForTimeout(1500);
 
-                    Path screenshotDir = Paths.get("screenshots");
+                    Path screenshotDir = screenshotProperties.getDirectoryPath();
                     Files.createDirectories(screenshotDir);
 
                     // 현재 활성 페이지 (팝업이 열리면 팝업으로 전환됨)
@@ -800,7 +805,7 @@ public class PlaywrightService {
 
                             stepResult.put("status", "success");
                             stepResult.put("currentUrl", activePage[0].url());
-                            stepResult.put("screenshotUrl", "/screenshots/" + fileName);
+                            stepResult.put("screenshotUrl", "/api/browser/screenshots/file/" + fileName);
 
                             log.info("{}[Step {}/{}] ✅ 성공 | {} {} | URL: {}",
                                     scenarioLabel, i + 1, steps.size(),
@@ -828,7 +833,7 @@ public class PlaywrightService {
                                 writeSidecar(screenshotDir, fileName, scenarioId, scenarioName,
                                         step.getOrder() != null ? step.getOrder() : i + 1,
                                         step.getSelector(), "error");
-                                stepResult.put("screenshotUrl", "/screenshots/" + fileName);
+                                stepResult.put("screenshotUrl", "/api/browser/screenshots/file/" + fileName);
                             } catch (Exception ignored) {}
                         }
 

@@ -1,10 +1,15 @@
 package io.github.jastname.playwrighttester.controller;
 
+import io.github.jastname.playwrighttester.config.ScreenshotProperties;
 import io.github.jastname.playwrighttester.service.PlaywrightService;
 import io.github.jastname.playwrighttester.dto.ButtonCandidate;
 import io.github.jastname.playwrighttester.service.InspectorSessionStore;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
@@ -26,10 +31,38 @@ public class BrowserTestController {
 
     private final PlaywrightService playwrightService;
     private final InspectorSessionStore inspectorSessionStore;
+    private final ScreenshotProperties screenshotProperties;
 
     // ── 스크린샷 목록 캐시 ──────────────────────────────────────────────────────
     /** 캐싱된 전체 파일 목록 (최신순 정렬). 변경 시 null로 초기화 */
     private volatile List<Map<String, Object>> screenshotCache = null;
+
+    @GetMapping("/settings/screenshot-directory")
+    public Map<String, Object> getScreenshotDirectory() {
+        return Map.of(
+                "directory", screenshotProperties.getDirectory(),
+                "absolutePath", screenshotProperties.getDirectoryPath().toString()
+        );
+    }
+
+    @PutMapping("/settings/screenshot-directory")
+    public Map<String, Object> setScreenshotDirectory(@RequestBody Map<String, Object> body) throws IOException {
+        Object directoryValue = body.get("directory");
+        if (!(directoryValue instanceof String directory) || directory.isBlank()) {
+            return Map.of("ok", false, "error", "directory is required");
+        }
+
+        screenshotProperties.saveDirectory(directory.trim());
+        Path dir = screenshotProperties.getDirectoryPath();
+        Files.createDirectories(dir);
+        screenshotCache = null;
+
+        return Map.of(
+                "ok", true,
+                "directory", screenshotProperties.getDirectory(),
+                "absolutePath", dir.toString()
+        );
+    }
 
     @PostMapping("/check")
     public Map<String, Object> check(@Valid @RequestBody PageCheckRequest request) {
@@ -159,8 +192,17 @@ public class BrowserTestController {
     public Map<String, Object> screenshotList(
             @RequestParam(name = "page", defaultValue = "1") int page,
             @RequestParam(name = "size", defaultValue = "50") int size) throws IOException {
-        Path dir = Paths.get("screenshots");
-        if (!Files.exists(dir)) return Map.of("count", 0, "totalBytes", 0L, "totalPages", 0, "page", page, "files", List.of());
+        Path dir = screenshotProperties.getDirectoryPath();
+        if (!Files.exists(dir)) {
+            return Map.of(
+                    "count", 0,
+                    "totalBytes", 0L,
+                    "totalPages", 0,
+                    "page", page,
+                    "files", List.of(),
+                    "directory", dir.toString()
+            );
+        }
 
         // 캐시 미스 시에만 파일 시스템 스캔
         List<Map<String, Object>> all = screenshotCache;
@@ -212,14 +254,31 @@ public class BrowserTestController {
                 "totalPages", totalPages,
                 "page",       page,
                 "size",       size,
-                "files",      pageItems
+                "files",      pageItems,
+                "directory",  dir.toString()
         );
     }
 
     /** 스크린샷 전체 삭제 */
+    @GetMapping("/screenshots/file/{filename}")
+    public ResponseEntity<Resource> screenshotFile(@PathVariable("filename") String filename) {
+        if (filename.contains("/") || filename.contains("\\") || filename.contains("..")) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        Path file = screenshotProperties.getDirectoryPath().resolve(filename).normalize();
+        if (!Files.exists(file) || !Files.isRegularFile(file)) {
+            return ResponseEntity.notFound().build();
+        }
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.IMAGE_PNG)
+                .body(new FileSystemResource(file));
+    }
+
     @DeleteMapping("/screenshots")
     public Map<String, Object> screenshotDeleteAll() throws IOException {
-        Path dir = Paths.get("screenshots");
+        Path dir = screenshotProperties.getDirectoryPath();
         if (!Files.exists(dir)) return Map.of("deleted", 0);
         int count = 0;
         try (var stream = Files.list(dir)) {
@@ -241,7 +300,7 @@ public class BrowserTestController {
         if (filename.contains("/") || filename.contains("\\") || filename.contains("..")) {
             return Map.of("ok", false, "error", "잘못된 파일명");
         }
-        Path dir  = Paths.get("screenshots");
+        Path dir  = screenshotProperties.getDirectoryPath();
         Path file = dir.resolve(filename);
         if (!Files.exists(file)) return Map.of("ok", false, "error", "파일 없음");
         Files.delete(file);
@@ -254,7 +313,7 @@ public class BrowserTestController {
     /** N일 이상 된 스크린샷 삭제 */
     @DeleteMapping("/screenshots/old")
     public Map<String, Object> screenshotDeleteOld(@RequestParam(name = "days", defaultValue = "7") int days) throws IOException {
-        Path dir = Paths.get("screenshots");
+        Path dir = screenshotProperties.getDirectoryPath();
         if (!Files.exists(dir)) return Map.of("deleted", 0);
         Instant cutoff = Instant.now().minus(days, ChronoUnit.DAYS);
         int count = 0;

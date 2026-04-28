@@ -1,11 +1,17 @@
 package io.github.jastname.playwrighttester.controller;
 
+import io.github.jastname.playwrighttester.config.LoginProperties;
 import io.github.jastname.playwrighttester.config.ScreenshotProperties;
+import io.github.jastname.playwrighttester.config.ServerProperties;
 import io.github.jastname.playwrighttester.service.PlaywrightService;
 import io.github.jastname.playwrighttester.dto.ButtonCandidate;
 import io.github.jastname.playwrighttester.service.InspectorSessionStore;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
@@ -13,6 +19,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
+import java.io.SequenceInputStream;
+import java.net.URISyntaxException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
@@ -21,22 +29,134 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Scanner;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 @RestController
 @RequestMapping("/api/browser")
-@RequiredArgsConstructor
 @CrossOrigin(origins = "*")
 public class BrowserTestController {
 
     private final PlaywrightService playwrightService;
-    private final InspectorSessionStore inspectorSessionStore;
+    private final InspectorSessionStore inspectorSessionStore = new InspectorSessionStore();
     private final ScreenshotProperties screenshotProperties;
+    private final ServerProperties serverProperties;
 
     // ── 스크린샷 목록 캐시 ──────────────────────────────────────────────────────
     /** 캐싱된 전체 파일 목록 (최신순 정렬). 변경 시 null로 초기화 */
     private volatile List<Map<String, Object>> screenshotCache = null;
+    
+    private final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
+    String sUrl;
+    
+    
+    @Autowired
+    BrowserTestController(PlaywrightService playwrightService, ScreenshotProperties screenshotProperties, ServerProperties serverProperties) throws URISyntaxException {
+        this.playwrightService = playwrightService;
+        this.screenshotProperties = screenshotProperties;
+        this.serverProperties = serverProperties;
+        this.sUrl = "http://localhost:" + serverProperties.getPort() + "/";
+    		
+		System.out.println("Copyright ALL LANDSOFT, Co. Ltd");
+         
+         try {
+            String[] cmd = null;
+           try {
+              // 실행 커맨드 명령어 취득
+              cmd = getUrlCmd(sUrl);
+           } catch (Exception e1) {
+              e1.printStackTrace();
+              return;
+           }
 
+           if (cmd == null) {
+              System.out.println("실행할 커맨드가 없습니다.");
+           } else {
+              // 커맨드 실행
+              
+                 executeCmd(cmd);
+                 LOGGER.info("브라우저 실행 =>" + sUrl);
+           }
+
+         }catch (Exception e) {
+            LOGGER.error("브라우저 로딩 오류");
+         }
+    }
+
+    
+    /**
+     * OS를 확인하여 그에 해당하는 커맨드를 설정하여 반환한다.
+     * @param url
+     * @return
+     * @throws Exception
+     */
+    private static String[] getUrlCmd(String url) throws Exception {
+       String[] cmd = null;
+       // OS확인
+       if (System.getProperty("os.name").toLowerCase().indexOf("windows") > -1) {
+          // windows일 경우
+          cmd = new String[] {"rundll32", "url.dll", "FileProtocolHandler",  url};
+       } else {
+          // windows이외인 경우
+          String[] browsers = {"firefox", "mozilla", "konqueror", "eqiphany", "netscape"};
+          String browser = "";
+
+          try {
+             for (int i = 0; i < browsers.length && "".equals(browser); i ++) {
+                // which로 깔려있는 인터넷 브라우저를 탐색
+                if (new ProcessBuilder(new String[] { "which", browsers[i] }).start().waitFor() == 0) {
+                   browser = browsers[i];
+                }
+             }
+
+             // 브라우저가 아무것도 없을면
+             if ("".equals(browser)) {
+                // 브라우저가 없을 경우 Exception발생 시킴
+                throw new Exception("Could not find web browser");
+             } else {
+                cmd = new String[]{browser, url};
+             }
+          } catch (IOException e) {
+             e.printStackTrace();
+          } catch (InterruptedException e) {
+             e.printStackTrace();
+          }
+       }
+
+       return cmd;
+    }
+    
+    
+    /**
+     * 커맨드 실행
+     * @param cmd
+     */
+    @SuppressWarnings("resource")
+    private static void executeCmd(String[] cmd) {
+
+       Process process = null;
+       try {
+
+          // 프로세스빌더 실행
+          process = new ProcessBuilder(cmd).start();
+
+          // SequenceInputStream은 여러개의 스트림을 하나의 스트림으로 연결해줌.
+          SequenceInputStream seqIn = new SequenceInputStream(process.getInputStream(), process.getErrorStream());
+
+          // 스캐너클래스를 사용해 InputStream을 스캔함
+          Scanner s = new Scanner(seqIn);
+          while (s.hasNextLine() == true) {
+             // 표준출력으로 출력
+             System.out.println(s.nextLine());
+          }
+
+       } catch (IOException e) {
+          e.printStackTrace();
+       }
+    }
+
+    
+    
     @GetMapping("/settings/screenshot-directory")
     public Map<String, Object> getScreenshotDirectory() {
         return Map.of(
@@ -111,7 +231,8 @@ public class BrowserTestController {
                 request.getTimeout(),
                 request.getSteps(),
                 request.getScenarioId(),
-                request.getScenarioName()
+                request.getScenarioName(),
+                request.getViewport()
         );
         screenshotCache = null; // 새 스크린샷 저장 → 캐시 무효화
         return result;
@@ -126,8 +247,24 @@ public class BrowserTestController {
         String browser = (String) body.getOrDefault("browser", "chromium");
         int timeout    = body.containsKey("timeout") ? ((Number) body.get("timeout")).intValue() : 30000;
 
+        // viewport 파싱
+        ScenarioRequest.ViewportConfig viewport = null;
+        Object vpObj = body.get("viewport");
+        if (vpObj instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> vpMap = (Map<String, Object>) vpObj;
+            viewport = new ScenarioRequest.ViewportConfig();
+            if (vpMap.get("width")             instanceof Number n) viewport.setWidth(n.intValue());
+            if (vpMap.get("height")            instanceof Number n) viewport.setHeight(n.intValue());
+            if (vpMap.get("deviceName")        instanceof String s) viewport.setDeviceName(s);
+            if (vpMap.get("userAgent")         instanceof String s) viewport.setUserAgent(s);
+            if (vpMap.get("deviceScaleFactor") instanceof Number n) viewport.setDeviceScaleFactor(n.doubleValue());
+            if (vpMap.get("isMobile")          instanceof Boolean b) viewport.setIsMobile(b);
+            if (vpMap.get("hasTouch")          instanceof Boolean b) viewport.setHasTouch(b);
+        }
+
         InspectorSessionStore.Session session = inspectorSessionStore.create();
-        playwrightService.startInspector(url, browser, timeout, session);
+        playwrightService.startInspector(url, browser, timeout, session, viewport);
 
         // 브라우저가 실제로 기동될 때까지 최대 15초 대기 (running=true 될 때까지)
         for (int i = 0; i < 75; i++) {
@@ -259,7 +396,6 @@ public class BrowserTestController {
         );
     }
 
-    /** 스크린샷 전체 삭제 */
     @GetMapping("/screenshots/file/{filename}")
     public ResponseEntity<Resource> screenshotFile(@PathVariable("filename") String filename) {
         if (filename.contains("/") || filename.contains("\\") || filename.contains("..")) {

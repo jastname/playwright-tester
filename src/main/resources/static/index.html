@@ -8,7 +8,14 @@
 </head>
 <body>
 <div class="container">
-    <h1>시나리오 테스트</h1>
+    <!-- 헤더: 제목 + 로그인 사용자 + 로그아웃 -->
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+        <h1 style="margin:0;">시나리오 테스트</h1>
+        <div style="display:flex; align-items:center; gap:10px; font-size:13px; color:#555;">
+            <span>👤 <strong id="headerUsername"></strong></span>
+            <button id="logoutBtn" class="btn-secondary" style="padding:6px 14px; font-size:13px;">로그아웃</button>
+        </div>
+    </div>
 
     <!-- Page-level tabs -->
     <div class="page-tabs">
@@ -19,7 +26,7 @@
 
     <!-- ═══ 탭 1: 테스트 ═══ -->
     <div class="page-tab-content active" id="page-test">
-        <p class="description">URL, 브라우저, headless 여부, timeout 을 설정하고 URL 접속 테스트 또는 요소 스캔 후 시나리오를 작성해 자동화 테스트를 실행하세요.</p>
+        <!-- <p class="description">URL, 브라우저, headless 여부, timeout 을 설정하고 URL 접속 테스트 또는 요소 스캔 후 시나리오를 작성해 자동화 테스트를 실행하세요.</p> -->
 
         <div class="grid">
             <div class="form-row full">
@@ -188,6 +195,79 @@
                         </label>
                     </div>
                 </div>
+
+                <!-- 해상도 / 기기 설정 -->
+                <div style="margin-top:12px; border:1px solid #e0e8ff; border-radius:10px; background:#f5f8ff; padding:12px 16px;">
+                    <div style="font-size:13px; font-weight:bold; margin-bottom:10px; color:#1a5fd1;">📱 해상도 / 기기 에뮬레이션 <span style="font-weight:400; color:#888;">(선택)</span></div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                        <div style="grid-column:1/-1;">
+                            <label style="font-size:12px; color:#666; margin-bottom:4px; display:block;">기기 프리셋</label>
+                            <select id="modalDevicePreset" style="width:100%; padding:7px 10px; border:1px solid #ccc; border-radius:8px; font-size:13px;">
+                                <option value="">-- 데스크탑 기본 (1280×720) --</option>
+                                <optgroup label="📱 모바일">
+                                    <option value="iPhone 17"        data-w="390" data-h="844" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 17 (390×844)</option>
+                                    <option value="iPhone 17 Pro"    data-w="430" data-h="932" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 17 Pro (430×932)</option>
+
+                                    <option value="iPhone 16"        data-w="390" data-h="844" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 16 (390×844)</option>
+                                    <option value="iPhone 16 Pro"    data-w="430" data-h="932" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 16 Pro (430×932)</option>
+
+                                    <option value="iPhone 15"        data-w="390" data-h="844" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 15 (390×844)</option>
+                                    <option value="iPhone 15 Pro"    data-w="393" data-h="852" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 15 Pro (393×852)</option>
+                                    <option value="iPhone 15 Pro Max" data-w="430" data-h="932" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 15 Pro Max (430×932)</option>
+
+                                    <option value="iPhone 14"        data-w="390" data-h="844" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 14 (390×844)</option>
+                                    <option value="iPhone 14 Pro"    data-w="393" data-h="851" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 14 Pro (393×851)</option>
+                                    <option value="iPhone 14 Pro Max"data-w="428" data-h="926" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 14 Pro Max (428×926)</option>
+
+                                    <option value="iPhone 13"        data-w="390" data-h="844" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 13 (390×844)</option>
+                                    <option value="iPhone 13 mini"   data-w="360" data-h="780" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 13 mini (360×780)</option>
+                                    <option value="iPhone 13 Pro"    data-w="390" data-h="844" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 13 Pro (390×844)</option>
+                                    <option value="iPhone 13 Pro Max"data-w="428" data-h="926" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 13 Pro Max (428×926)</option>
+
+                                    <option value="Galaxy S26"       data-w="412" data-h="932" data-ua="Mozilla/5.0 (Linux; Android 16; SM-S96xB) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36" data-dpr="3" data-mobile="1" data-touch="1">Galaxy S26 (412×932)</option>
+                                    <option value="Galaxy S26 Ultra" data-w="412" data-h="980" data-ua="Mozilla/5.0 (Linux; Android 16; SM-S96xU) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36" data-dpr="3" data-mobile="1" data-touch="1">Galaxy S26 Ultra (412×980)</option>
+
+                                    <option value="Galaxy S25"       data-w="412" data-h="932" data-ua="Mozilla/5.0 (Linux; Android 15; SM-S95xB) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36" data-dpr="3" data-mobile="1" data-touch="1">Galaxy S25 (412×932)</option>
+                                    <option value="Galaxy S25 Ultra" data-w="412" data-h="980" data-ua="Mozilla/5.0 (Linux; Android 15; SM-S95xU) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36" data-dpr="3" data-mobile="1" data-touch="1">Galaxy S25 Ultra (412×980)</option>
+
+                                    <option value="Galaxy S24"        data-w="412" data-h="915" data-ua="Mozilla/5.0 (Linux; Android 14; SM-S921B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36" data-dpr="2.625" data-mobile="1" data-touch="1">Galaxy S24 (412×915)</option>
+                                    <option value="Galaxy S24 Ultra"  data-w="412" data-h="932" data-ua="Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36" data-dpr="3" data-mobile="1" data-touch="1">Galaxy S24 Ultra (412×932)</option>
+
+                                    <option value="Galaxy S23"       data-w="393" data-h="852" data-ua="Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36" data-dpr="2.75" data-mobile="1" data-touch="1">Galaxy S23 (393×852)</option>
+                                    <option value="Galaxy S23 Ultra" data-w="412" data-h="932" data-ua="Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36" data-dpr="3" data-mobile="1" data-touch="1">Galaxy S23 Ultra (412×932)</option>
+
+                                    <option value="Galaxy S22"       data-w="360" data-h="780" data-ua="Mozilla/5.0 (Linux; Android 12; SM-S901B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36" data-dpr="3" data-mobile="1" data-touch="1">Galaxy S22 (360×780)</option>
+                                    <option value="Galaxy S22+"      data-w="384" data-h="854" data-ua="Mozilla/5.0 (Linux; Android 12; SM-S906B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36" data-dpr="3" data-mobile="1" data-touch="1">Galaxy S22+ (384×854)</option>
+                                    <option value="Galaxy S22 Ultra" data-w="308" data-h="1440" data-ua="Mozilla/5.0 (Linux; Android 12; SM-S908B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36" data-dpr="3" data-mobile="1" data-touch="1">Galaxy S22 Ultra (308×1440)</option>
+
+                                    <option value="Pixel 7"           data-w="412" data-h="915" data-ua="Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36" data-dpr="2.625" data-mobile="1" data-touch="1">Pixel 7 (412×915)</option>
+                                </optgroup>
+                                <optgroup label="📟 태블릿">
+                                    <option value="iPad Pro 12"  data-w="1024" data-h="1366" data-ua="Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" data-dpr="2" data-mobile="0" data-touch="1">iPad Pro 12 (1024×1366)</option>
+                                    <option value="iPad Air"     data-w="820"  data-h="1180" data-ua="Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" data-dpr="2" data-mobile="0" data-touch="1">iPad Air (820×1180)</option>
+                                    <option value="Galaxy Tab S9" data-w="800" data-h="1280" data-ua="Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" data-dpr="2" data-mobile="0" data-touch="1">Galaxy Tab S9 (800×1280)</option>
+                                </optgroup>
+                                <optgroup label="🖥 데스크탑">
+                                    <option value="custom-1280" data-w="1280" data-h="720"  data-dpr="1" data-mobile="0" data-touch="0">HD (1280×720)</option>
+                                    <option value="custom-1920" data-w="1920" data-h="1080" data-dpr="1" data-mobile="0" data-touch="0">FHD (1920×1080)</option>
+                                    <option value="custom-2560" data-w="2560" data-h="1440" data-dpr="1" data-mobile="0" data-touch="0">QHD (2560×1440)</option>
+                                </optgroup>
+                                <option value="__custom__">✏️ 직접 입력</option>
+                            </select>
+                        </div>
+                        <div id="modalCustomViewport" style="display:none; grid-column:1/-1; display:none; gap:8px; grid-template-columns:1fr 1fr;">
+                            <div>
+                                <label style="font-size:12px; color:#666; margin-bottom:3px; display:block;">너비 (px)</label>
+                                <input id="modalVpWidth" type="number" min="200" max="3840" placeholder="1280" style="width:100%; padding:7px 10px; border:1px solid #ccc; border-radius:8px; font-size:13px;" />
+                            </div>
+                            <div>
+                                <label style="font-size:12px; color:#666; margin-bottom:3px; display:block;">높이 (px)</label>
+                                <input id="modalVpHeight" type="number" min="200" max="2160" placeholder="720" style="width:100%; padding:7px 10px; border:1px solid #ccc; border-radius:8px; font-size:13px;" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div style="margin-top:10px; font-size:12px; color:#888;">💡 순서 번호를 입력한 요소 + 인스펙터에서 선택한 요소가 시나리오에 포함됩니다.</div>
             </div>
 
@@ -206,10 +286,10 @@
 
                 <!-- 필터 바 -->
                 <div id="modalFilterBar" class="filter-bar" style="display:none;">
-                    <input id="mFilterTag"    type="text" placeholder="태그 (예: input)" style="width:110px;" />
-                    <input id="mFilterIdName" type="text" placeholder="ID / Name"       style="width:140px;" />
-                    <input id="mFilterClass"  type="text" placeholder="클래스"          style="width:140px;" />
-                    <input id="mFilterText"   type="text" placeholder="텍스트 / Placeholder" style="width:180px;" />
+                    <input id="mFilterTag"    type="text" placeholder="태그 (예: input)" 		style="width:110px;" />
+                    <input id="mFilterIdName" type="text" placeholder="ID / Name"       	style="width:140px;" />
+                    <input id="mFilterClass"  type="text" placeholder="클래스"				style="width:140px;" />
+                    <input id="mFilterText"   type="text" placeholder="텍스트 / Placeholder" 	style="width:180px;" />
                     <select id="mFilterInteraction">
                         <option value="">인터랙션 전체</option>
                         <option value="click">click</option>
@@ -268,6 +348,7 @@
     </div>
 </div>
 
+<script src="/js/auth.js"></script>
 <script src="/js/app.js"></script>
 <script src="/js/settings.js"></script>
 <script src="/js/scenario-store.js"></script>

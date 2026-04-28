@@ -1,6 +1,11 @@
 spring:
   application:
     name: playwright-tester
+
+app:
+  login:
+    username: 
+    password: 
     
 server:
   port: ${SERVER_PORT:8888}

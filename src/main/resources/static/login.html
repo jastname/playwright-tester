@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>로그인 – 시나리오 테스트</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #e8f0fe 0%, #f1f3f4 100%);
+            font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+        }
+
+        .login-card {
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(26, 115, 232, 0.13);
+            padding: 44px 40px 36px;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .login-logo {
+            text-align: center;
+            margin-bottom: 28px;
+        }
+        .login-logo .icon { font-size: 40px; }
+        .login-logo h1 {
+            font-size: 20px;
+            font-weight: 700;
+            color: #1a1a2e;
+            margin-top: 8px;
+        }
+        .login-logo p {
+            font-size: 13px;
+            color: #888;
+            margin-top: 4px;
+        }
+
+        .form-group { margin-bottom: 16px; }
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #444;
+            margin-bottom: 6px;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 11px 14px;
+            border: 1.5px solid #d0d7de;
+            border-radius: 10px;
+            font-size: 15px;
+            outline: none;
+            transition: border-color .15s;
+        }
+        .form-group input:focus { border-color: #1a73e8; }
+
+        .btn-login {
+            width: 100%;
+            padding: 13px;
+            background: #1a73e8;
+            color: #fff;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            margin-top: 8px;
+            transition: background .15s;
+        }
+        .btn-login:hover { background: #1558c0; }
+        .btn-login:active { background: #1045a0; }
+
+        .error-box {
+            background: #fff0f0;
+            border: 1px solid #f5c6c6;
+            color: #b00020;
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 13px;
+            margin-bottom: 14px;
+            display: none;
+        }
+        .error-box.visible { display: block; }
+    </style>
+</head>
+<body>
+<div class="login-card">
+    <div class="login-logo">
+     <!--    <div class="icon">🎭</div> -->
+        <h1>시나리오 테스트</h1>
+        <p>계속하려면 로그인하세요</p>
+    </div>
+
+    <div class="error-box" id="errorBox"></div>
+
+    <form id="loginForm">
+        <div class="form-group">
+            <label for="username">아이디</label>
+            <input id="username" name="username" type="text" placeholder="아이디를 입력하세요" autocomplete="username" required />
+        </div>
+        <div class="form-group">
+            <label for="password">비밀번호</label>
+            <input id="password" name="password" type="password" placeholder="비밀번호를 입력하세요" autocomplete="current-password" required />
+        </div>
+        <button class="btn-login" type="submit" id="submitBtn">로그인</button>
+    </form>
+	
+</div>
+<div class="copyright" style="text-align:center; margin-top:18px; font-size:12px; color:#aaa; line-height:1.7;">
+    &copy; 2026 LANDSOFT Co., Ltd. All Rights Reserved.<br>
+    powered by 품질관리팀
+</div>
+<script>
+    // URL 파라미터에 error 있으면 오류 메시지 표시
+    const params = new URLSearchParams(location.search);
+    const errorBox = document.getElementById('errorBox');
+    if (params.has('error')) {
+        errorBox.textContent = params.get('error') === 'invalid'
+            ? '아이디 또는 비밀번호가 올바르지 않습니다.'
+            : '로그인에 실패했습니다.';
+        errorBox.classList.add('visible');
+    }
+
+    document.getElementById('loginForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        errorBox.classList.remove('visible');
+
+        const username = document.getElementById('username').value.trim();
+        const password = document.getElementById('password').value;
+        const btn = document.getElementById('submitBtn');
+
+        if (!username || !password) {
+            errorBox.textContent = '아이디와 비밀번호를 모두 입력하세요.';
+            errorBox.classList.add('visible');
+            return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = '로그인 중...';
+
+        try {
+            const res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                // 원래 가려던 URL 또는 /
+                const redirect = params.get('redirect') || '/';
+                location.href = redirect;
+            } else {
+                errorBox.textContent = data.message || '로그인에 실패했습니다.';
+                errorBox.classList.add('visible');
+                btn.disabled = false;
+                btn.textContent = '로그인';
+            }
+        } catch (err) {
+            errorBox.textContent = '서버 연결 오류가 발생했습니다.';
+            errorBox.classList.add('visible');
+            btn.disabled = false;
+            btn.textContent = '로그인';
+        }
+    });
+</script>
+</body>
+</html>

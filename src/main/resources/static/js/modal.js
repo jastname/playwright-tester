@@ -14,6 +14,10 @@ function openModal() {
     modalTimeoutInput.value    = scanParams.timeout || timeoutInput.value || 30000;
     modalHeadlessInput.checked = scanParams.headless !== undefined ? scanParams.headless : headlessInput.checked;
 
+    // 기기 프리셋 초기화
+    const presetEl = document.getElementById('modalDevicePreset');
+    if (presetEl) { presetEl.value = ''; applyDevicePreset(); }
+
     inspectorPicked = [];
     renderInspectorList();
     document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
@@ -163,7 +167,7 @@ modalSaveBtn.addEventListener('click', () => {
         tag:             el.tag,
         idName:          (el.id ? '#'+el.id : '') || el.name || '-',
         labelText:       (el.text || el.placeholder || '').substring(0, 30),
-        fillText:        el.fillText || null,
+        fillText:        el.interactionType === 'select' ? (el.selectedValue || el.fillText || null) : (el.fillText || null),
         waitMs:          500
     }));
 
@@ -176,6 +180,7 @@ modalSaveBtn.addEventListener('click', () => {
         browser:  modalBrowserSelect.value,
         headless: modalHeadlessInput.checked,
         timeout:  Number(modalTimeoutInput.value) || 30000,
+        viewport: buildViewportFromModal(),
         steps
     });
     closeModal();
@@ -183,3 +188,48 @@ modalSaveBtn.addEventListener('click', () => {
     persistScenarios();
     setStatus('Scenario "' + name + '" saved.', 'success');
 });
+
+// ── 기기 프리셋 핸들러 ────────────────────────────────────────────────────
+(function() {
+    const presetEl  = document.getElementById('modalDevicePreset');
+    const customDiv = document.getElementById('modalCustomViewport');
+    if (!presetEl) return;
+
+    presetEl.addEventListener('change', applyDevicePreset);
+
+    function applyDevicePreset() {
+        const opt = presetEl.options[presetEl.selectedIndex];
+        const isCustom = presetEl.value === '__custom__';
+        customDiv.style.display = isCustom ? 'grid' : 'none';
+        if (!isCustom && presetEl.value) {
+            const w = opt.dataset.w;
+            const h = opt.dataset.h;
+            document.getElementById('modalVpWidth').value  = w || '';
+            document.getElementById('modalVpHeight').value = h || '';
+        }
+    }
+
+    window.applyDevicePreset = applyDevicePreset;
+})();
+
+function buildViewportFromModal() {
+    const presetEl = document.getElementById('modalDevicePreset');
+    if (!presetEl || !presetEl.value) return null;
+
+    const isCustom = presetEl.value === '__custom__';
+    const opt = isCustom ? null : presetEl.options[presetEl.selectedIndex];
+
+    const w   = isCustom ? parseInt(document.getElementById('modalVpWidth').value)  : parseInt(opt.dataset.w || '0');
+    const h   = isCustom ? parseInt(document.getElementById('modalVpHeight').value) : parseInt(opt.dataset.h || '0');
+    if (!w || !h) return null;
+
+    return {
+        width:             w,
+        height:            h,
+        deviceName:        isCustom ? null : (presetEl.value || null),
+        userAgent:         isCustom ? null : (opt.dataset.ua  || null),
+        deviceScaleFactor: isCustom ? null : (opt.dataset.dpr ? parseFloat(opt.dataset.dpr) : null),
+        isMobile:          isCustom ? false : (opt.dataset.mobile === '1'),
+        hasTouch:          isCustom ? false : (opt.dataset.touch  === '1')
+    };
+}

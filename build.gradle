@@ -20,6 +20,7 @@ repositories {
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+	implementation 'com.fasterxml.jackson.core:jackson-databind'
 	compileOnly 'org.projectlombok:lombok'
 	developmentOnly 'org.springframework.boot:spring-boot-devtools'
 	annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
@@ -36,3 +37,122 @@ dependencies {
 tasks.named('test') {
 	useJUnitPlatform()
 }
+
+// ──────────────────────────────────────────────
+// 자바 없는 환경을 위한 배포 패키지 생성 태스크
+// 실행: ./gradlew distZip
+// 결과: build/distributions/playwright-tester-<version>.zip
+// ──────────────────────────────────────────────
+def distDir = layout.buildDirectory.dir('dist-work')
+
+// Spring Boot + Tomcat 구동에 필요한 모듈 목록 (java.instrument 포함)
+def jreModules = [
+	'java.base',
+	'java.datatransfer',
+	'java.desktop',
+	'java.instrument',   // Tomcat 클래스 계측에 필요
+	'java.logging',
+	'java.management',
+	'java.naming',
+	'java.net.http',
+	'java.prefs',
+	'java.security.jgss',
+	'java.security.sasl',
+	'java.sql',
+	'java.transaction.xa',
+	'java.xml',
+	'java.xml.crypto',
+	'jdk.crypto.cryptoki',
+	'jdk.crypto.ec',
+	'jdk.localedata',
+	'jdk.management',
+	'jdk.naming.dns',
+	'jdk.unsupported',
+	'jdk.zipfs',
+].join(',')
+
+tasks.register('buildJre') {
+	def jreDir = layout.buildDirectory.dir('jre').get().asFile
+	outputs.dir(jreDir)
+	doLast {
+		if (jreDir.exists()) jreDir.deleteDir()
+
+		// jlink는 JDK(jmods 포함) 위치에서 실행해야 함
+		def javaHome = System.getProperty('java.home')
+		// java.home 이 jre 하위를 가리킬 경우 상위로 이동
+		def jdkHome = new File(javaHome).parentFile?.name == 'jre'
+			? new File(javaHome).parentFile.absolutePath
+			: javaHome
+		def jlink = "${jdkHome}/bin/jlink"
+		def jmodsPath = "${jdkHome}/jmods"
+
+		def cmd = [jlink.toString(),
+				'--module-path', jmodsPath.toString(),
+				'--add-modules', jreModules.toString(),
+				'--output', jreDir.absolutePath.toString(),
+				'--compress', 'zip-6',
+				'--no-header-files',
+				'--no-man-pages'] as List<String>
+		def proc = new ProcessBuilder(cmd)
+			.redirectErrorStream(true)
+			.start()
+		def output = proc.inputStream.text
+		def exitCode = proc.waitFor()
+		if (exitCode != 0) {
+			throw new GradleException("jlink 실행 실패 (exit $exitCode):\n$output")
+		}
+	}
+}
+
+tasks.register('prepareDistDir') {
+	dependsOn 'bootJar', 'buildJre'
+	doLast {
+		def dir = distDir.get().asFile
+		if (dir.exists()) dir.deleteDir()
+
+		// 1) jlink로 생성한 JRE 복사
+		def jreDir = layout.buildDirectory.dir('jre').get().asFile
+		copy {
+			from jreDir
+			into "${dir}/runtime"
+		}
+
+		// 2) fat JAR 복사
+		copy {
+			from tasks.named('bootJar').get().outputs.files
+			into "${dir}/app"
+		}
+
+		// 3) Windows 실행 스크립트 (.bat)
+		def bat = new File("${dir}/start.bat")
+		bat.text = "@echo off\r\n" +
+			"cd /d \"%~dp0\"\r\n" +
+			"runtime\\bin\\java.exe -jar app\\${bootJar.archiveFileName.get()}\r\n" +
+			"if %ERRORLEVEL% neq 0 (\r\n" +
+			"    echo.\r\n" +
+			"    echo [오류] 애플리케이션이 비정상 종료되었습니다. 위 오류 메시지를 확인하세요.\r\n" +
+			"    pause\r\n" +
+			")\r\n"
+
+		// 4) Linux / macOS 실행 스크립트 (.sh)
+		def sh = new File("${dir}/start.sh")
+		sh.text = "#!/bin/sh\n" +
+			"cd \"\$(dirname \"\$0\")\"\n" +
+			"./runtime/bin/java -jar app/${bootJar.archiveFileName.get()}\n"
+
+		// 5) README 파일 복사
+		copy {
+			from "${projectDir}/README.txt"
+			into dir
+		}
+	}
+}
+
+tasks.register('distZip', Zip) {
+	dependsOn 'prepareDistDir'
+	archiveBaseName = project.name
+	archiveVersion = project.version
+	destinationDirectory = layout.buildDirectory.dir('distributions')
+	from distDir
+}
+

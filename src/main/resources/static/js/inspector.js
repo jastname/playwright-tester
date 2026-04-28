@@ -24,7 +24,10 @@ inspectorStartBtn.addEventListener('click', async () => {
     try {
         const res  = await fetch('/api/browser/inspector/start', {
             method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ url, browser, timeout })
+            body: JSON.stringify({
+                url, browser, timeout,
+                viewport: (typeof buildViewportFromModal === 'function') ? buildViewportFromModal() : null
+            })
         });
         const data = await res.json();
 
@@ -96,14 +99,19 @@ function renderInspectorList() {
         const item = document.createElement('div');
         item.className = 'inspector-item';
         const label = (el.text || el.placeholder || el.selector || '').substring(0, 40);
-        const isFill = el.interactionType === 'fill';
+        const isFill   = el.interactionType === 'fill';
+        const isSelect = el.interactionType === 'select';
+        const selectDisplay = isSelect
+            ? (el.selectedText ? `${escapeHtml(el.selectedText)} (${escapeHtml(el.selectedValue||'')})` : '<span style="color:#e74c3c;font-size:11px;">값 미선택</span>')
+            : '';
         item.innerHTML = `
             <span class="inspector-item-order">${idx + 1}</span>
             <span class="inspector-item-tag">${escapeHtml(el.tag||'')}</span>
             <span class="badge ${badgeCls[el.interactionType]||''}" style="font-size:11px;">${escapeHtml(el.interactionType||'')}</span>
             <span class="inspector-item-label" title="${escapeHtml(el.selector||'')}">${escapeHtml(label)}</span>
             <span class="inspector-item-sel">${escapeHtml((el.selector||'').substring(0,30))}</span>
-            ${isFill ? `<input type="text" class="inspector-fill-input" placeholder="입력값" value="${escapeHtml(el.fillText||'')}" />` : ''}
+            ${isFill   ? `<input type="text" class="inspector-fill-input" placeholder="입력값" value="${escapeHtml(el.fillText||'')}" />` : ''}
+            ${isSelect ? `<span class="inspector-select-value" style="font-size:12px;color:#1a5fd1;padding:0 6px;">${selectDisplay}</span>` : ''}
             <span class="inspector-item-del" title="삭제">x</span>
         `;
         if (isFill) {

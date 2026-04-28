@@ -235,11 +235,126 @@ public class PlaywrightService {
               updateOverlay(el);
             }, true);
 
+            // ── select 옵션 팝업 ──────────────────────────────
+            function showSelectPicker(el, info, e) {
+              // 기존 팝업 제거
+              var existing = document.getElementById('__insp_select_popup');
+              if (existing) existing.remove();
+
+              var options = Array.from(el.options || []);
+              if (!options.length) {
+                // 옵션 없으면 바로 큐에 추가
+                queueInfo(info);
+                return;
+              }
+
+              var popup = document.createElement('div');
+              popup.id = '__insp_select_popup';
+              Object.assign(popup.style, {
+                position: 'fixed',
+                zIndex: '2147483649',
+                background: '#fff',
+                border: '1.5px solid #1a5fd1',
+                borderRadius: '10px',
+                boxShadow: '0 4px 24px rgba(0,0,0,0.22)',
+                padding: '10px 0',
+                minWidth: '200px',
+                maxWidth: '340px',
+                maxHeight: '320px',
+                overflowY: 'auto',
+                fontFamily: 'sans-serif',
+                fontSize: '13px'
+              });
+
+              // 위치: 클릭 위치
+              var px = Math.min(e.clientX, window.innerWidth - 360);
+              var py = Math.min(e.clientY, window.innerHeight - 340);
+              popup.style.left = px + 'px';
+              popup.style.top  = py + 'px';
+
+              var title = document.createElement('div');
+              title.textContent = '옵션을 선택하세요';
+              Object.assign(title.style, {
+                padding: '4px 14px 8px', fontWeight: 'bold', color: '#1a5fd1',
+                borderBottom: '1px solid #e0e0e0', marginBottom: '4px', fontSize: '12px'
+              });
+              popup.appendChild(title);
+
+              options.forEach(function(opt) {
+                var item = document.createElement('div');
+                item.textContent = opt.text || opt.value;
+                Object.assign(item.style, {
+                  padding: '7px 16px',
+                  cursor: 'pointer',
+                  color: opt.disabled ? '#aaa' : '#222'
+                });
+                if (!opt.disabled) {
+                  item.addEventListener('mouseenter', function() { item.style.background = '#e8f0fe'; });
+                  item.addEventListener('mouseleave', function() { item.style.background = ''; });
+                  item.addEventListener('click', function(ev) {
+                    ev.stopPropagation();
+                    info.selectedValue = opt.value;
+                    info.selectedText  = opt.text;
+                    popup.remove();
+
+                    overlay.style.border = '3px solid #27ae60';
+                    overlay.style.background = 'rgba(46,204,113,0.18)';
+                    setTimeout(function() {
+                      overlay.style.border = '2px solid red';
+                      overlay.style.background = 'rgba(255,0,0,0.08)';
+                    }, 400);
+
+                    showBanner('✅ 캡처: ' + (opt.text || opt.value).slice(0, 40));
+                    queueInfo(info);
+                  });
+                }
+                popup.appendChild(item);
+              });
+
+              // 닫기 버튼
+              var closeRow = document.createElement('div');
+              Object.assign(closeRow.style, {
+                borderTop: '1px solid #e0e0e0', marginTop: '4px',
+                padding: '6px 14px 2px', textAlign: 'right'
+              });
+              var closeBtn = document.createElement('button');
+              closeBtn.textContent = '취소';
+              Object.assign(closeBtn.style, {
+                background: '#eee', border: 'none', borderRadius: '6px',
+                padding: '4px 12px', cursor: 'pointer', fontSize: '12px'
+              });
+              closeBtn.addEventListener('click', function() { popup.remove(); });
+              closeRow.appendChild(closeBtn);
+              popup.appendChild(closeRow);
+
+              document.documentElement.appendChild(popup);
+
+              // 팝업 외부 클릭 시 닫기
+              function onOutside(ev) {
+                if (!popup.contains(ev.target)) {
+                  popup.remove();
+                  document.removeEventListener('click', onOutside, true);
+                }
+              }
+              setTimeout(function() {
+                document.addEventListener('click', onOutside, true);
+              }, 100);
+            }
+
+            function queueInfo(info) {
+              if (!window.__inspectorQueue) window.__inspectorQueue = [];
+              window.__inspectorQueue.push(info);
+              console.log('[Inspector] queued element, queue size:', window.__inspectorQueue.length);
+            }
+
             // ── 우클릭: 캡처 (server.js 동일 방식) ──────────────
             document.addEventListener('contextmenu', function(e) {
               if (!active) return;
               var el = document.elementFromPoint(e.clientX, e.clientY);
               if (!el || el === badge || badge.contains(el)) return;
+              // 팝업 내부 우클릭은 무시
+              var popup = document.getElementById('__insp_select_popup');
+              if (popup && popup.contains(el)) return;
 
               updateOverlay(el);
               e.preventDefault();
@@ -248,11 +363,16 @@ public class PlaywrightService {
               var info = buildInfo(el);
               if (!info) return;
 
+              // select 요소면 옵션 선택 팝업 표시
+              if (el.tagName && el.tagName.toLowerCase() === 'select') {
+                showSelectPicker(el, info, e);
+                return;
+              }
+
               var signature = JSON.stringify(info);
               if (signature !== lastSignature) lastSignature = signature;
 
               // 캡처 시각적 피드백
-              var origBorder = overlay.style.border;
               overlay.style.border = '3px solid #27ae60';
               overlay.style.background = 'rgba(46,204,113,0.18)';
               setTimeout(function() {
@@ -261,10 +381,7 @@ public class PlaywrightService {
               }, 400);
 
               showBanner('✅ 캡처: ' + (info.text !== '-' ? info.text : info.selector).slice(0, 40));
-              // CSP 우회: fetch 대신 전역 큐에 저장 → Playwright 서버 측 폴링으로 수집
-              if (!window.__inspectorQueue) window.__inspectorQueue = [];
-              window.__inspectorQueue.push(info);
-              console.log('[Inspector] queued element, queue size:', window.__inspectorQueue.length);
+              queueInfo(info);
             }, true);
 
           } // end __initInspector
@@ -279,6 +396,12 @@ public class PlaywrightService {
      */
     public void startInspector(String url, String browserName, int timeout,
                                InspectorSessionStore.Session session) {
+        startInspector(url, browserName, timeout, session, null);
+    }
+
+    public void startInspector(String url, String browserName, int timeout,
+                               InspectorSessionStore.Session session,
+                               ScenarioRequest.ViewportConfig viewport) {
         // running은 브라우저가 실제로 열린 뒤에 true 로 바꿈
         session.running = false;
 
@@ -289,7 +412,7 @@ public class PlaywrightService {
                 playwright = Playwright.create();
                 browser    = launchBrowser(playwright, browserName, false); // 항상 non-headless
 
-                BrowserContext ctx = newStealthContext(browser);
+                BrowserContext ctx = newStealthContext(browser, viewport);
 
                 // ── sessionId 먼저 주입 (INSPECTOR_SCRIPT에서 사용) ──
                 ctx.addInitScript("window.__inspectorSessionId = '" + session.id + "';");
@@ -609,13 +732,17 @@ public class PlaywrightService {
                             }
                         }
                         case "select" -> {
-                            @SuppressWarnings("unchecked")
-                            String firstOption = (String) page.evaluate(
-                                "sel => { const e = document.querySelector(sel); return e && e.options && e.options.length > 0 ? e.options[0].value : null; }",
-                                selector
-                            );
-                            if (firstOption != null) {
-                                locator.selectOption(firstOption, new Locator.SelectOptionOptions().setTimeout(5000));
+                            String optionValue = (fillText != null && !fillText.isBlank()) ? fillText : null;
+                            if (optionValue == null) {
+                                @SuppressWarnings("unchecked")
+                                String firstOption = (String) page.evaluate(
+                                    "sel => { const e = document.querySelector(sel); return e && e.options && e.options.length > 0 ? e.options[0].value : null; }",
+                                    selector
+                                );
+                                optionValue = firstOption;
+                            }
+                            if (optionValue != null) {
+                                locator.selectOption(optionValue, new Locator.SelectOptionOptions().setTimeout(5000));
                             }
                         }
                     }
@@ -663,12 +790,19 @@ public class PlaywrightService {
     public Map<String, Object> testScenario(
             String url, String browserName, boolean headless, int timeout,
             List<ScenarioRequest.ScenarioStep> steps) {
-        return testScenario(url, browserName, headless, timeout, steps, null, null);
+        return testScenario(url, browserName, headless, timeout, steps, null, null, null);
     }
 
     public Map<String, Object> testScenario(
             String url, String browserName, boolean headless, int timeout,
             List<ScenarioRequest.ScenarioStep> steps, Long scenarioId, String scenarioName) {
+        return testScenario(url, browserName, headless, timeout, steps, scenarioId, scenarioName, null);
+    }
+
+    public Map<String, Object> testScenario(
+            String url, String browserName, boolean headless, int timeout,
+            List<ScenarioRequest.ScenarioStep> steps, Long scenarioId, String scenarioName,
+            ScenarioRequest.ViewportConfig viewport) {
 
         Map<String, Object> scenarioResult = new LinkedHashMap<>();
         List<Map<String, Object>> stepResults = new ArrayList<>();
@@ -681,7 +815,24 @@ public class PlaywrightService {
         try (Playwright playwright = Playwright.create()) {
             Browser browser = launchBrowser(playwright, browserName, headless);
             try (browser) {
-                try (BrowserContext ctx = browser.newContext()) {
+                // 뷰포트 / 기기 에뮬레이션 컨텍스트 옵션 구성
+                Browser.NewContextOptions ctxOptions = new Browser.NewContextOptions();
+                if (viewport != null) {
+                    int w = (viewport.getWidth()  != null && viewport.getWidth()  > 0) ? viewport.getWidth()  : 1280;
+                    int h = (viewport.getHeight() != null && viewport.getHeight() > 0) ? viewport.getHeight() : 720;
+                    ctxOptions.setViewportSize(w, h);
+                    if (viewport.getUserAgent() != null && !viewport.getUserAgent().isBlank())
+                        ctxOptions.setUserAgent(viewport.getUserAgent());
+                    if (viewport.getDeviceScaleFactor() != null)
+                        ctxOptions.setDeviceScaleFactor(viewport.getDeviceScaleFactor());
+                    if (Boolean.TRUE.equals(viewport.getIsMobile()))
+                        ctxOptions.setIsMobile(true);
+                    if (Boolean.TRUE.equals(viewport.getHasTouch()))
+                        ctxOptions.setHasTouch(true);
+                    log.info("{}뷰포트 설정: {}×{}{}", scenarioLabel, w, h,
+                            viewport.getDeviceName() != null ? " (" + viewport.getDeviceName() + ")" : "");
+                }
+                try (BrowserContext ctx = browser.newContext(ctxOptions)) {
                     Page page = ctx.newPage();
                     page.setDefaultTimeout(timeout);
                     page.navigate(url, new Page.NavigateOptions().setWaitUntil(WaitUntilState.LOAD));
@@ -779,13 +930,18 @@ public class PlaywrightService {
                                     activePage[0].waitForTimeout(200);
                                 }
                                 case "select" -> {
-                                    @SuppressWarnings("unchecked")
-                                    String firstOption = (String) activePage[0].evaluate(
-                                        "sel => { const e = document.querySelector(sel); return e && e.options && e.options.length > 0 ? e.options[0].value : null; }",
-                                        step.getSelector()
-                                    );
-                                    if (firstOption != null) {
-                                        locator.selectOption(firstOption,
+                                    String optVal = (step.getFillText() != null && !step.getFillText().isBlank())
+                                        ? step.getFillText() : null;
+                                    if (optVal == null) {
+                                        @SuppressWarnings("unchecked")
+                                        String firstOption = (String) activePage[0].evaluate(
+                                            "sel => { const e = document.querySelector(sel); return e && e.options && e.options.length > 0 ? e.options[0].value : null; }",
+                                            step.getSelector()
+                                        );
+                                        optVal = firstOption;
+                                    }
+                                    if (optVal != null) {
+                                        locator.selectOption(optVal,
                                                 new Locator.SelectOptionOptions().setTimeout(8000));
                                     }
                                 }
@@ -1004,14 +1160,30 @@ public class PlaywrightService {
     }
 
     private BrowserContext newStealthContext(Browser browser) {
+        return newStealthContext(browser, null);
+    }
+
+    private BrowserContext newStealthContext(Browser browser, ScenarioRequest.ViewportConfig viewport) {
+        int w = 1920, h = 1080;
+        String ua = STEALTH_USER_AGENT;
+        if (viewport != null) {
+            if (viewport.getWidth()  != null && viewport.getWidth()  > 0) w = viewport.getWidth();
+            if (viewport.getHeight() != null && viewport.getHeight() > 0) h = viewport.getHeight();
+            if (viewport.getUserAgent() != null && !viewport.getUserAgent().isBlank()) ua = viewport.getUserAgent();
+        }
         Browser.NewContextOptions ctxOptions = new Browser.NewContextOptions()
-                .setUserAgent(STEALTH_USER_AGENT)
+                .setUserAgent(ua)
                 .setLocale("ko-KR")
                 .setTimezoneId("Asia/Seoul")
-                .setViewportSize(1920, 1080)
+                .setViewportSize(w, h)
                 .setExtraHTTPHeaders(java.util.Map.of(
                         "Accept-Language", "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7"
                 ));
+        if (viewport != null) {
+            if (viewport.getDeviceScaleFactor() != null) ctxOptions.setDeviceScaleFactor(viewport.getDeviceScaleFactor());
+            if (Boolean.TRUE.equals(viewport.getIsMobile()))  ctxOptions.setIsMobile(true);
+            if (Boolean.TRUE.equals(viewport.getHasTouch()))  ctxOptions.setHasTouch(true);
+        }
         BrowserContext ctx = browser.newContext(ctxOptions);
         ctx.addInitScript(STEALTH_INIT_SCRIPT);
         return ctx;

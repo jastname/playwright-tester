@@ -73,7 +73,8 @@ async function runScenario(id) {
                 timeout: sc.timeout,
                 steps: apiSteps,
                 scenarioId: sc.id,
-                scenarioName: sc.name
+                scenarioName: sc.name,
+                viewport: sc.viewport || null
             })
         });
         const data = await res.json();

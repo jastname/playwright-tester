@@ -216,6 +216,78 @@
                         <label for="editHeadless" style="font-size:13px; cursor:pointer; margin:0;">Headless 모드</label>
                     </div>
                 </div>
+
+                <!-- 해상도 / 기기 에뮬레이션 -->
+                <div style="margin-top:14px; border:1px solid #dde8ff; border-radius:10px; background:#f5f8ff; padding:12px 16px;">
+                    <div style="font-size:13px; font-weight:bold; margin-bottom:10px; color:#1a5fd1;">📱 해상도 / 기기 에뮬레이션 <span style="font-weight:400; color:#888;">(선택)</span></div>
+                    <div style="display:grid; grid-template-columns:1fr; gap:10px;">
+                        <div>
+                            <label style="font-size:12px; color:#666; margin-bottom:4px; display:block;">기기 프리셋</label>
+                            <select id="editDevicePreset" class="edit-field" style="width:100%;">
+                                <option value="">-- 데스크탑 기본 (1280×720) --</option>
+                                <optgroup label="📱 모바일">
+                                    <option value="iPhone 17"        data-w="390" data-h="844" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 17 (390×844)</option>
+                                    <option value="iPhone 17 Pro"    data-w="430" data-h="932" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 17 Pro (430×932)</option>
+
+                                    <option value="iPhone 16"        data-w="390" data-h="844" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 16 (390×844)</option>
+                                    <option value="iPhone 16 Pro"    data-w="430" data-h="932" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 16 Pro (430×932)</option>
+
+                                    <option value="iPhone 15"        data-w="390" data-h="844" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 15 (390×844)</option>
+                                    <option value="iPhone 15 Pro"    data-w="393" data-h="852" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 15 Pro (393×852)</option>
+                                    <option value="iPhone 15 Pro Max" data-w="430" data-h="932" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 15 Pro Max (430×932)</option>
+
+                                    <option value="iPhone 14"        data-w="390" data-h="844" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 14 (390×844)</option>
+                                    <option value="iPhone 14 Pro"    data-w="393" data-h="851" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 14 Pro (393×851)</option>
+                                    <option value="iPhone 14 Pro Max"data-w="428" data-h="926" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 14 Pro Max (428×926)</option>
+
+                                    <option value="iPhone 13"        data-w="390" data-h="844" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 13 (390×844)</option>
+                                    <option value="iPhone 13 mini"   data-w="360" data-h="780" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 13 mini (360×780)</option>
+                                    <option value="iPhone 13 Pro"    data-w="390" data-h="844" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 13 Pro (390×844)</option>
+                                    <option value="iPhone 13 Pro Max"data-w="428" data-h="926" data-ua="Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1" data-dpr="3" data-mobile="1" data-touch="1">iPhone 13 Pro Max (428×926)</option>
+
+                                    <option value="Galaxy S26"       data-w="412" data-h="932" data-ua="Mozilla/5.0 (Linux; Android 16; SM-S96xB) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36" data-dpr="3" data-mobile="1" data-touch="1">Galaxy S26 (412×932)</option>
+                                    <option value="Galaxy S26 Ultra" data-w="412" data-h="980" data-ua="Mozilla/5.0 (Linux; Android 16; SM-S96xU) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36" data-dpr="3" data-mobile="1" data-touch="1">Galaxy S26 Ultra (412×980)</option>
+
+                                    <option value="Galaxy S25"       data-w="412" data-h="932" data-ua="Mozilla/5.0 (Linux; Android 15; SM-S95xB) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36" data-dpr="3" data-mobile="1" data-touch="1">Galaxy S25 (412×932)</option>
+                                    <option value="Galaxy S25 Ultra" data-w="412" data-h="980" data-ua="Mozilla/5.0 (Linux; Android 15; SM-S95xU) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36" data-dpr="3" data-mobile="1" data-touch="1">Galaxy S25 Ultra (412×980)</option>
+
+                                    <option value="Galaxy S24"        data-w="412" data-h="915" data-ua="Mozilla/5.0 (Linux; Android 14; SM-S921B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36" data-dpr="2.625" data-mobile="1" data-touch="1">Galaxy S24 (412×915)</option>
+                                    <option value="Galaxy S24 Ultra"  data-w="412" data-h="932" data-ua="Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36" data-dpr="3" data-mobile="1" data-touch="1">Galaxy S24 Ultra (412×932)</option>
+
+                                    <option value="Galaxy S23"       data-w="393" data-h="852" data-ua="Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36" data-dpr="2.75" data-mobile="1" data-touch="1">Galaxy S23 (393×852)</option>
+                                    <option value="Galaxy S23 Ultra" data-w="412" data-h="932" data-ua="Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36" data-dpr="3" data-mobile="1" data-touch="1">Galaxy S23 Ultra (412×932)</option>
+
+                                    <option value="Galaxy S22"       data-w="360" data-h="780" data-ua="Mozilla/5.0 (Linux; Android 12; SM-S901B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36" data-dpr="3" data-mobile="1" data-touch="1">Galaxy S22 (360×780)</option>
+                                    <option value="Galaxy S22+"      data-w="384" data-h="854" data-ua="Mozilla/5.0 (Linux; Android 12; SM-S906B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36" data-dpr="3" data-mobile="1" data-touch="1">Galaxy S22+ (384×854)</option>
+                                    <option value="Galaxy S22 Ultra" data-w="308" data-h="1440" data-ua="Mozilla/5.0 (Linux; Android 12; SM-S908B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36" data-dpr="3" data-mobile="1" data-touch="1">Galaxy S22 Ultra (308×1440)</option>
+
+                                    <option value="Pixel 7"           data-w="412" data-h="915" data-ua="Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36" data-dpr="2.625" data-mobile="1" data-touch="1">Pixel 7 (412×915)</option>
+                                </optgroup>
+                                <optgroup label="📟 태블릿">
+                                    <option value="iPad Pro 12"  data-w="1024" data-h="1366" data-ua="Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" data-dpr="2" data-mobile="0" data-touch="1">iPad Pro 12 (1024×1366)</option>
+                                    <option value="iPad Air"     data-w="820"  data-h="1180" data-ua="Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" data-dpr="2" data-mobile="0" data-touch="1">iPad Air (820×1180)</option>
+                                    <option value="Galaxy Tab S9" data-w="800" data-h="1280" data-ua="Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" data-dpr="2" data-mobile="0" data-touch="1">Galaxy Tab S9 (800×1280)</option>
+                                </optgroup>
+                                <optgroup label="🖥 데스크탑">
+                                    <option value="custom-1280" data-w="1280" data-h="720"  data-dpr="1" data-mobile="0" data-touch="0">HD (1280×720)</option>
+                                    <option value="custom-1920" data-w="1920" data-h="1080" data-dpr="1" data-mobile="0" data-touch="0">FHD (1920×1080)</option>
+                                    <option value="custom-2560" data-w="2560" data-h="1440" data-dpr="1" data-mobile="0" data-touch="0">QHD (2560×1440)</option>
+                                </optgroup>
+                                <option value="__custom__">✏️ 직접 입력</option>
+                            </select>
+                        </div>
+                        <div id="editCustomViewport" style="display:none; gap:8px; grid-template-columns:1fr 1fr;">
+                            <div>
+                                <label style="font-size:12px; color:#666; margin-bottom:3px; display:block;">너비 (px)</label>
+                                <input id="editVpWidth" type="number" min="200" max="3840" placeholder="1280" class="edit-field" style="width:100%;" />
+                            </div>
+                            <div>
+                                <label style="font-size:12px; color:#666; margin-bottom:3px; display:block;">높이 (px)</label>
+                                <input id="editVpHeight" type="number" min="200" max="2160" placeholder="720" class="edit-field" style="width:100%;" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- 단계 편집 -->
@@ -339,6 +411,21 @@
         document.getElementById('scTimeout').textContent   = '⏱ ' + scenario.timeout + 'ms';
         document.getElementById('scHeadless').textContent  = scenario.headless ? '👻 Headless ON' : '🖥 Headless OFF';
         document.getElementById('scStepCount').textContent = '📋 ' + scenario.steps.length + '단계';
+        // viewport pill
+        let vpPill = document.getElementById('scViewport');
+        if (!vpPill) {
+            vpPill = document.createElement('span');
+            vpPill.className = 'meta-pill';
+            vpPill.id = 'scViewport';
+            document.querySelector('.scenario-info-card').appendChild(vpPill);
+        }
+        const vp = scenario.viewport;
+        if (vp && (vp.width || vp.deviceName)) {
+            vpPill.textContent = '📱 ' + (vp.deviceName || (vp.width + '×' + vp.height));
+            vpPill.style.display = '';
+        } else {
+            vpPill.style.display = 'none';
+        }
     }
 
     // ── 단계 테이블 렌더링 ────────────────────────────────────────────
@@ -421,7 +508,8 @@
                     url: scenario.url, browser: scenario.browser,
                     headless: scenario.headless, timeout: scenario.timeout,
                     steps: stepsToRun,
-                    scenarioId: scenario.id, scenarioName: scenario.name
+                    scenarioId: scenario.id, scenarioName: scenario.name,
+                    viewport: scenario.viewport || null
                 })
             });
             const data = await res.json();
@@ -460,7 +548,8 @@
                 body: JSON.stringify({
                     url: scenario.url, browser: scenario.browser,
                     headless: scenario.headless, timeout: scenario.timeout,
-                    steps: apiSteps, scenarioId: scenario.id, scenarioName: scenario.name
+                    steps: apiSteps, scenarioId: scenario.id, scenarioName: scenario.name,
+                    viewport: scenario.viewport || null
                 })
             });
             const data = await res.json();
@@ -637,6 +726,29 @@
         document.getElementById('editBrowser').value    = scenario.browser;
         document.getElementById('editTimeout').value    = scenario.timeout;
         document.getElementById('editHeadless').checked = scenario.headless;
+
+        // viewport 로딩
+        const presetSel = document.getElementById('editDevicePreset');
+        const vp = scenario.viewport;
+        if (vp && vp.deviceName) {
+            // 일치하는 프리셋 찾기
+            let matched = false;
+            for (const opt of presetSel.options) {
+                if (opt.value === vp.deviceName) { presetSel.value = vp.deviceName; matched = true; break; }
+            }
+            if (!matched) {
+                presetSel.value = '__custom__';
+                document.getElementById('editVpWidth').value  = vp.width  || '';
+                document.getElementById('editVpHeight').value = vp.height || '';
+            }
+        } else if (vp && vp.width) {
+            presetSel.value = '__custom__';
+            document.getElementById('editVpWidth').value  = vp.width;
+            document.getElementById('editVpHeight').value = vp.height;
+        } else {
+            presetSel.value = '';
+        }
+        applyEditDevicePreset();
         editSteps = scenario.steps.map(s => ({ ...s }));
         renderEditSteps();
         document.getElementById('editPanel').style.display = '';
@@ -722,7 +834,7 @@
         if (timeout < 1000) { alert('timeout은 1000ms 이상이어야 합니다.'); return; }
         if (editSteps.length === 0) { alert('단계가 하나도 없습니다.'); return; }
         editSteps.forEach((s, j) => { s.order = j + 1; });
-        const updated = { ...scenario, name, url, browser, timeout, headless, steps: editSteps };
+        const updated = { ...scenario, name, url, browser, timeout, headless, viewport: buildEditViewport(), steps: editSteps };
         document.getElementById('editSaveBtn').disabled = true;
         document.getElementById('editSaveBtn').textContent = '⏳ 저장 중...';
         try {
@@ -742,6 +854,43 @@
             document.getElementById('editSaveBtn').disabled = false;
             document.getElementById('editSaveBtn').textContent = '💾 저장';
         }
+    }
+
+    // ── 기기 프리셋 헬퍼 ────────────────────────────────────────────────
+    (function() {
+        const presetSel = document.getElementById('editDevicePreset');
+        if (presetSel) presetSel.addEventListener('change', applyEditDevicePreset);
+    })();
+
+    function applyEditDevicePreset() {
+        const presetSel  = document.getElementById('editDevicePreset');
+        const customDiv  = document.getElementById('editCustomViewport');
+        const isCustom   = presetSel.value === '__custom__';
+        customDiv.style.display = isCustom ? 'grid' : 'none';
+        if (!isCustom && presetSel.value) {
+            const opt = presetSel.options[presetSel.selectedIndex];
+            document.getElementById('editVpWidth').value  = opt.dataset.w || '';
+            document.getElementById('editVpHeight').value = opt.dataset.h || '';
+        }
+    }
+
+    function buildEditViewport() {
+        const presetSel = document.getElementById('editDevicePreset');
+        if (!presetSel || !presetSel.value) return null;
+        const isCustom = presetSel.value === '__custom__';
+        const opt = isCustom ? null : presetSel.options[presetSel.selectedIndex];
+        const w = isCustom ? parseInt(document.getElementById('editVpWidth').value)  : parseInt(opt.dataset.w || '0');
+        const h = isCustom ? parseInt(document.getElementById('editVpHeight').value) : parseInt(opt.dataset.h || '0');
+        if (!w || !h) return null;
+        return {
+            width:             w,
+            height:            h,
+            deviceName:        isCustom ? null : (presetSel.value || null),
+            userAgent:         isCustom ? null : (opt.dataset.ua  || null),
+            deviceScaleFactor: isCustom ? null : (opt.dataset.dpr ? parseFloat(opt.dataset.dpr) : null),
+            isMobile:          isCustom ? false : (opt.dataset.mobile === '1'),
+            hasTouch:          isCustom ? false : (opt.dataset.touch  === '1')
+        };
     }
 </script>
 </body>

@@ -37,6 +37,29 @@ public class ScenarioRequest {
     /** 시나리오 이름 (스크린샷 메타 연결용, optional) */
     private String scenarioName;
 
+    /**
+     * 뷰포트 설정 (optional). null이면 기본값(1280×720) 사용.
+     * 예: { "width": 375, "height": 812, "deviceName": "iPhone 12" }
+     */
+    private ViewportConfig viewport;
+
+    @Getter
+    @Setter
+    public static class ViewportConfig {
+        private Integer width;
+        private Integer height;
+        /** 기기 이름 (정보성, Playwright 내장 기기 에뮬레이션용) */
+        private String deviceName;
+        /** User-Agent 오버라이드 (optional) */
+        private String userAgent;
+        /** 픽셀 비율 (deviceScaleFactor) */
+        private Double deviceScaleFactor;
+        /** 모바일 에뮬레이션 여부 */
+        private Boolean isMobile;
+        /** 터치 지원 여부 */
+        private Boolean hasTouch;
+    }
+
     @Getter
     @Setter
     public static class ScenarioStep {

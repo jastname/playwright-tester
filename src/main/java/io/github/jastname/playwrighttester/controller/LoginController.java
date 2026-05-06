@@ -45,6 +45,7 @@ public class LoginController {
                 && password.equals(encodedPassword)) {
             HttpSession session = request.getSession(true);
             session.setAttribute(AuthInterceptor.SESSION_KEY, username);
+            session.setMaxInactiveInterval(loginProperties.getSessionTimeout());
             return ResponseEntity.ok(Map.of("success", true, "user", username));
         }
 

@@ -12,4 +12,6 @@ import org.springframework.stereotype.Component;
 public class LoginProperties {
     private String username = "landsoft";
     private String password = "landsoft13!#";
+    /** 로그인 유지시간 (초). 기본값 1800초 = 30분 */
+    private int sessionTimeout = 10800;
 }

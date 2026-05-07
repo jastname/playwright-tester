@@ -133,6 +133,6 @@ inspectorClearBtn.addEventListener('click', () => {
 });
 
 fillSampleButton.addEventListener('click', () => {
-    urlInput.value = 'https://royal.khs.go.kr/';
+    urlInput.value = 'https://landsoft.co.kr/';
     setStatus('샘플 URL을 입력했습니다.', 'success');
 });

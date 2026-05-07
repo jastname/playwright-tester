@@ -24,7 +24,6 @@ public class LoginController {
 
     private final LoginProperties loginProperties;
 
-    /** application.yml 의 plain password 를 앱 시작 시 BCrypt 인코딩하여 메모리에 보관 */
     private String encodedPassword;
 
     @PostConstruct

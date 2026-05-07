@@ -758,20 +758,115 @@ public class PlaywrightService {
                 }
             }
         } catch (Exception e) {
-            result.put("status", "error");
+            // classify and decide what to expose
+            String errorType = classifyError(e);
+            String label     = errorTypeLabel(errorType);
+            String location  = errorLocation(e);
             String msg = e.getMessage() != null ? e.getMessage() : "알 수 없는 오류";
-            // cause chain 포함
             Throwable cause = e.getCause();
             if (cause != null && cause.getMessage() != null && !msg.contains(cause.getMessage())) {
-                msg = msg + "\n원인: " + cause.getMessage();
+                msg = msg + " | 원인: " + cause.getMessage();
             }
-            result.put("errorMessage", msg.length() > 1000 ? msg.substring(0, 1000) + "..." : msg);
+            String fullMsg = label + " " + msg;
+
+            // Determine broad category: INTERNAL vs SCENARIO
+            String errorCategory = "SCENARIO";
+            if ("INTERNAL".equals(errorType)) errorCategory = "INTERNAL";
+
+            result.put("status", "error");
+            result.put("errorType",     errorType);
+            result.put("errorCategory", errorCategory);
+            result.put("errorLocation", location);
+
+            if ("INTERNAL".equals(errorCategory)) {
+                // Do not expose full internal exception message to API consumers
+                result.put("errorMessage", label + " 내부 오류가 발생했습니다. 관리자에게 문의하세요.");
+                // Log full details for diagnostics
+                log.error("[testElement] 내부 오류 발생 | {} ({}) | {}", label, location, fullMsg, e);
+            } else {
+                // Scenario-related error: show informative message
+                String shortMsg = msg.length() > 500 ? msg.substring(0, 500) + "..." : msg;
+                result.put("errorMessage", label + " " + shortMsg);
+                log.error("[testElement] 시나리오 오류 | {} ({}) | {}", label, location, shortMsg);
+            }
         }
 
         return result;
     }
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    /**
+     * 에러 유형을 분류합니다.
+     *  ELEMENT_NOT_FOUND – 셀렉터/요소를 찾지 못한 경우
+     *  TIMEOUT           – 타임아웃 (요소 탐색 외)
+     *  NAVIGATION        – 페이지 이동 / 네트워크 오류
+     *  INTERACTION       – 클릭·입력·선택 등 상호작용 실패
+     *  BROWSER           – 브라우저 실행 / 컨텍스트 오류
+     *  INTERNAL          – 그 외 내부 Java 오류
+     */
+    private static String classifyError(Throwable e) {
+        if (e == null) return "INTERNAL";
+        String cls = e.getClass().getSimpleName();
+        String msg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
+
+        if (msg.contains("waiting for selector") || msg.contains("waiting for locator")
+                || msg.contains("element not found") || msg.contains("no element")
+                || (msg.contains("not found") && !msg.contains("navigation"))
+                || (cls.contains("TimeoutError") && (msg.contains("selector") || msg.contains("locator")))) {
+            return "ELEMENT_NOT_FOUND";
+        }
+        if (cls.contains("TimeoutError") || msg.contains("timeout") || msg.contains("timed out")) {
+            return "TIMEOUT";
+        }
+        if (msg.contains("navigation") || msg.contains("net::err") || msg.contains("failed to navigate")
+                || msg.contains("err_name_not_resolved") || msg.contains("err_connection")
+                || msg.contains("err_aborted") || msg.contains("failed to load")) {
+            return "NAVIGATION";
+        }
+        if (msg.contains("intercept") || msg.contains("detached")
+                || msg.contains("not visible") || msg.contains("not enabled")
+                || msg.contains("not clickable")) {
+            return "INTERACTION";
+        }
+        if (msg.contains("launch") || msg.contains("executable") || msg.contains("browser")
+                || cls.contains("PlaywrightException")) {
+            return "BROWSER";
+        }
+        return "INTERNAL";
+    }
+
+    /** 에러 유형의 한글 표시 레이블을 반환합니다. */
+    private static String errorTypeLabel(String type) {
+        return switch (type) {
+            case "ELEMENT_NOT_FOUND" -> "[요소 없음]";
+            case "TIMEOUT"           -> "[타임아웃]";
+            case "NAVIGATION"        -> "[네비게이션 오류]";
+            case "INTERACTION"       -> "[상호작용 실패]";
+            case "BROWSER"           -> "[브라우저 오류]";
+            default                  -> "[내부 오류]";
+        };
+    }
+
+    /** 예외 발생 위치(클래스#메서드:라인)를 문자열로 반환합니다. */
+    private static String errorLocation(Throwable e) {
+        if (e == null) return "unknown";
+        StackTraceElement[] frames = e.getStackTrace();
+        if (frames == null || frames.length == 0) return "unknown";
+        for (StackTraceElement f : frames) {
+            if (f.getClassName().startsWith("io.github.jastname")) {
+                String cls = f.getClassName();
+                return cls.substring(cls.lastIndexOf('.') + 1)
+                        + "#" + f.getMethodName()
+                        + ":" + f.getLineNumber();
+            }
+        }
+        StackTraceElement f = frames[0];
+        String cls = f.getClassName();
+        return cls.substring(cls.lastIndexOf('.') + 1)
+                + "#" + f.getMethodName()
+                + ":" + f.getLineNumber();
+    }
 
     private void writeSidecar(Path screenshotDir, String fileName, Long scenarioId, String scenarioName, int stepOrder, String selector, String status) {
         try {
@@ -968,18 +1063,27 @@ public class PlaywrightService {
                                     step.getInteractionType(), step.getSelector(), activePage[0].url());
 
                         } catch (Exception e) {
+                            String errorType = classifyError(e);
+                            String label     = errorTypeLabel(errorType);
+                            String location  = errorLocation(e);
                             String msg = e.getMessage() != null ? e.getMessage() : "알 수 없는 오류";
                             Throwable cause = e.getCause();
                             if (cause != null && cause.getMessage() != null && !msg.contains(cause.getMessage())) {
-                                msg = msg + "\n원인: " + cause.getMessage();
+                                msg = msg + " | 원인: " + cause.getMessage();
                             }
-                            stepResult.put("status", "error");
-                            stepResult.put("errorMessage", msg.length() > 1000 ? msg.substring(0, 1000) + "..." : msg);
+                            // 에러 메시지는 타입 레이블만 앞에 붙이고 원문 보존 (너무 긴 경우 자름)
+                            String shortMsg = msg.length() > 300 ? msg.substring(0, 300) + "..." : msg;
+                            String fullMsg  = label + " " + shortMsg;
 
-                            log.error("{}[Step {}/{}] ❌ 실패 | {} {} | 오류: {}",
+                            stepResult.put("status",        "error");
+                            stepResult.put("errorType",     errorType);
+                            stepResult.put("errorLocation", location);
+                            stepResult.put("errorMessage",  fullMsg);
+
+                            log.error("{}[Step {}/{}] ❌ 실패 | {} {} | {} ({}) | {}",
                                     scenarioLabel, i + 1, steps.size(),
                                     step.getInteractionType(), step.getSelector(),
-                                    msg.length() > 200 ? msg.substring(0, 200) + "..." : msg);
+                                    label, location, shortMsg);
 
                             // 실패해도 스크린샷 남기기
                             try {
@@ -998,8 +1102,15 @@ public class PlaywrightService {
                 }
             }
         } catch (Exception e) {
-            scenarioResult.put("status", "error");
-            scenarioResult.put("errorMessage", e.getMessage());
+            String errorType = classifyError(e);
+            String label     = errorTypeLabel(errorType);
+            String location  = errorLocation(e);
+            String msg = e.getMessage() != null ? e.getMessage() : "알 수 없는 오류";
+            log.error("{}시나리오 실행 중 오류 | {} ({}) | {}", scenarioLabel, label, location, msg);
+            scenarioResult.put("status",        "error");
+            scenarioResult.put("errorType",     errorType);
+            scenarioResult.put("errorLocation", location);
+            scenarioResult.put("errorMessage",  label + " " + msg);
             scenarioResult.put("steps", stepResults);
             return scenarioResult;
         }

@@ -43,6 +43,11 @@ public class ScenarioRequest {
      */
     private ViewportConfig viewport;
 
+    /**
+     * 전체 페이지 스크린샷 여부 (optional). null/false면 뷰포트 기준.
+     */
+    private Boolean fullPageScreenshot;
+
     @Getter
     @Setter
     public static class ViewportConfig {

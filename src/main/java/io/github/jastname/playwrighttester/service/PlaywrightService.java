@@ -885,19 +885,38 @@ public class PlaywrightService {
     public Map<String, Object> testScenario(
             String url, String browserName, boolean headless, int timeout,
             List<ScenarioRequest.ScenarioStep> steps) {
-        return testScenario(url, browserName, headless, timeout, steps, null, null, null);
+        return testScenario(url, browserName, headless, timeout, steps, null, null, null, false, null);
     }
 
     public Map<String, Object> testScenario(
             String url, String browserName, boolean headless, int timeout,
             List<ScenarioRequest.ScenarioStep> steps, Long scenarioId, String scenarioName) {
-        return testScenario(url, browserName, headless, timeout, steps, scenarioId, scenarioName, null);
+        return testScenario(url, browserName, headless, timeout, steps, scenarioId, scenarioName, null, false, null);
     }
 
     public Map<String, Object> testScenario(
             String url, String browserName, boolean headless, int timeout,
             List<ScenarioRequest.ScenarioStep> steps, Long scenarioId, String scenarioName,
             ScenarioRequest.ViewportConfig viewport) {
+        return testScenario(url, browserName, headless, timeout, steps, scenarioId, scenarioName, viewport, false, null);
+    }
+
+    public Map<String, Object> testScenario(
+            String url, String browserName, boolean headless, int timeout,
+            List<ScenarioRequest.ScenarioStep> steps, Long scenarioId, String scenarioName,
+            ScenarioRequest.ViewportConfig viewport, boolean fullPageScreenshot) {
+        return testScenario(url, browserName, headless, timeout, steps, scenarioId, scenarioName, viewport, fullPageScreenshot, null);
+    }
+
+    public Map<String, Object> testScenario(
+            String url, String browserName, boolean headless, int timeout,
+            List<ScenarioRequest.ScenarioStep> steps, Long scenarioId, String scenarioName,
+            ScenarioRequest.ViewportConfig viewport, boolean fullPageScreenshot,
+            java.util.function.Consumer<Map<String, Object>> progressCallback) {
+
+        // progress callback helper (null-safe)
+        final java.util.function.Consumer<Map<String, Object>> progress =
+                progressCallback != null ? progressCallback : (m) -> {};
 
         Map<String, Object> scenarioResult = new LinkedHashMap<>();
         List<Map<String, Object>> stepResults = new ArrayList<>();
@@ -906,6 +925,12 @@ public class PlaywrightService {
 
         String scenarioLabel = (scenarioName != null ? "[" + scenarioName + "] " : "");
         log.info("{}시나리오 실행 시작 | URL: {} | 총 {}단계", scenarioLabel, url, steps.size());
+
+        // 시작 이벤트 전송
+        progress.accept(Map.of(
+            "type", "scenario-start",
+            "totalSteps", steps.size()
+        ));
 
         try (Playwright playwright = Playwright.create()) {
             Browser browser = launchBrowser(playwright, browserName, headless);
@@ -952,6 +977,16 @@ public class PlaywrightService {
                         stepResult.put("fillText", step.getFillText());
 
                         try {
+                            // 단계 시작 이벤트
+                            progress.accept(Map.of(
+                                "type", "step-start",
+                                "stepIndex", i,
+                                "step", i + 1,
+                                "totalSteps", steps.size(),
+                                "selector", step.getSelector(),
+                                "interactionType", step.getInteractionType()
+                            ));
+
                             // 셀렉터 후보: 원본 → 마지막 파트만 → 클래스만
                             Locator locator = resolveLocator(activePage[0], step.getSelector());
 
@@ -1049,7 +1084,7 @@ public class PlaywrightService {
                             // 단계별 스크린샷
                             String fileName = UUID.randomUUID() + ".png";
                             Path screenshotPath = screenshotDir.resolve(fileName);
-                            activePage[0].screenshot(new Page.ScreenshotOptions().setPath(screenshotPath).setFullPage(false));
+                            activePage[0].screenshot(new Page.ScreenshotOptions().setPath(screenshotPath).setFullPage(fullPageScreenshot));
                             writeSidecar(screenshotDir, fileName, scenarioId, scenarioName,
                                     step.getOrder() != null ? step.getOrder() : i + 1,
                                     step.getSelector(), "success");
@@ -1061,6 +1096,19 @@ public class PlaywrightService {
                             log.info("{}[Step {}/{}] ✅ 성공 | {} {} | URL: {}",
                                     scenarioLabel, i + 1, steps.size(),
                                     step.getInteractionType(), step.getSelector(), activePage[0].url());
+
+                            // 진행률 이벤트 (성공)
+                            {
+                                Map<String, Object> ev = new LinkedHashMap<>();
+                                ev.put("type",          "step-result");
+                                ev.put("stepIndex",     i);
+                                ev.put("step",          i + 1);
+                                ev.put("totalSteps",    steps.size());
+                                ev.put("status",        "success");
+                                ev.put("screenshotUrl", "/api/browser/screenshots/file/" + fileName);
+                                ev.put("currentUrl",    activePage[0].url());
+                                progress.accept(ev);
+                            }
 
                         } catch (Exception e) {
                             String errorType = classifyError(e);
@@ -1089,12 +1137,26 @@ public class PlaywrightService {
                             try {
                                 String fileName = UUID.randomUUID() + ".png";
                                 Path screenshotPath = screenshotDir.resolve(fileName);
-                                activePage[0].screenshot(new Page.ScreenshotOptions().setPath(screenshotPath).setFullPage(false));
+                                activePage[0].screenshot(new Page.ScreenshotOptions().setPath(screenshotPath).setFullPage(fullPageScreenshot));
                                 writeSidecar(screenshotDir, fileName, scenarioId, scenarioName,
                                         step.getOrder() != null ? step.getOrder() : i + 1,
                                         step.getSelector(), "error");
                                 stepResult.put("screenshotUrl", "/api/browser/screenshots/file/" + fileName);
                             } catch (Exception ignored) {}
+
+                            // 진행률 이벤트 (실패)
+                            {
+                                Map<String, Object> ev = new LinkedHashMap<>();
+                                ev.put("type",         "step-result");
+                                ev.put("stepIndex",    i);
+                                ev.put("step",         i + 1);
+                                ev.put("totalSteps",   steps.size());
+                                ev.put("status",       "error");
+                                ev.put("errorMessage", stepResult.getOrDefault("errorMessage", ""));
+                                if (stepResult.containsKey("screenshotUrl"))
+                                    ev.put("screenshotUrl", stepResult.get("screenshotUrl"));
+                                progress.accept(ev);
+                            }
                         }
 
                         stepResults.add(stepResult);
@@ -1123,6 +1185,14 @@ public class PlaywrightService {
 
         String finalStatus = successCount == steps.size() ? "✅ 전체 성공" : "⚠️ 일부 실패";
         log.info("{}시나리오 실행 완료 | {} | 성공: {}/{}", scenarioLabel, finalStatus, successCount, steps.size());
+
+        // 완료 이벤트
+        progress.accept(Map.of(
+            "type",         "scenario-complete",
+            "successCount", successCount,
+            "failCount",    steps.size() - successCount,
+            "totalSteps",   steps.size()
+        ));
 
         return scenarioResult;
     }

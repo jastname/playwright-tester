@@ -6,6 +6,7 @@ import io.github.jastname.playwrighttester.config.ServerProperties;
 import io.github.jastname.playwrighttester.service.PlaywrightService;
 import io.github.jastname.playwrighttester.dto.ButtonCandidate;
 import io.github.jastname.playwrighttester.service.InspectorSessionStore;
+import io.github.jastname.playwrighttester.service.ScenarioProgressStore;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
@@ -17,6 +18,7 @@ import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.io.SequenceInputStream;
@@ -41,6 +43,7 @@ public class BrowserTestController {
     private final InspectorSessionStore inspectorSessionStore = new InspectorSessionStore();
     private final ScreenshotProperties screenshotProperties;
     private final ServerProperties serverProperties;
+    private final ScenarioProgressStore progressStore;
 
     // ── 스크린샷 목록 캐시 ──────────────────────────────────────────────────────
     /** 캐싱된 전체 파일 목록 (최신순 정렬). 변경 시 null로 초기화 */
@@ -51,10 +54,12 @@ public class BrowserTestController {
     
     
     @Autowired
-    BrowserTestController(PlaywrightService playwrightService, ScreenshotProperties screenshotProperties, ServerProperties serverProperties) throws URISyntaxException {
+    BrowserTestController(PlaywrightService playwrightService, ScreenshotProperties screenshotProperties,
+                          ServerProperties serverProperties, ScenarioProgressStore progressStore) throws URISyntaxException {
         this.playwrightService = playwrightService;
         this.screenshotProperties = screenshotProperties;
         this.serverProperties = serverProperties;
+        this.progressStore = progressStore;
         this.sUrl = "http://localhost:" + serverProperties.getPort() + "/";
     		
 		System.out.println("Copyright ALL LANDSOFT, Co. Ltd");
@@ -232,10 +237,65 @@ public class BrowserTestController {
                 request.getSteps(),
                 request.getScenarioId(),
                 request.getScenarioName(),
-                request.getViewport()
+                request.getViewport(),
+                Boolean.TRUE.equals(request.getFullPageScreenshot())
         );
         screenshotCache = null; // 새 스크린샷 저장 → 캐시 무효화
         return result;
+    }
+
+    /**
+     * 시나리오를 비동기로 실행하기 시작하고 executionId를 즉시 반환합니다.
+     * 클라이언트는 이후 GET /test-scenario-progress/{id} 로 SSE 연결해 진행률을 수신합니다.
+     */
+    @PostMapping("/test-scenario-async")
+    public Map<String, Object> testScenarioAsync(@Valid @RequestBody ScenarioRequest request) {
+        ScenarioProgressStore.Execution exec = progressStore.create();
+
+        Thread.ofVirtual().start(() -> {
+            try {
+                playwrightService.testScenario(
+                        request.getUrl(),
+                        request.getBrowser(),
+                        request.getHeadless(),
+                        request.getTimeout(),
+                        request.getSteps(),
+                        request.getScenarioId(),
+                        request.getScenarioName(),
+                        request.getViewport(),
+                        Boolean.TRUE.equals(request.getFullPageScreenshot()),
+                        event -> exec.emit((String) event.get("type"), event)
+                );
+            } catch (Exception e) {
+                exec.emit("scenario-error", Map.of(
+                    "type",         "scenario-error",
+                    "errorMessage", e.getMessage() != null ? e.getMessage() : "알 수 없는 오류"
+                ));
+            } finally {
+                screenshotCache = null;
+                exec.complete();
+                // 60초 후 자원 정리
+                try { Thread.sleep(60_000); } catch (InterruptedException ignored) {}
+                progressStore.remove(exec.id);
+            }
+        });
+
+        return Map.of("executionId", exec.id);
+    }
+
+    /**
+     * SSE 스트림: 시나리오 실행 진행률을 실시간으로 전송합니다.
+     */
+    @GetMapping(value = "/test-scenario-progress/{id}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter testScenarioProgress(@PathVariable("id") String id) {
+        SseEmitter emitter = new SseEmitter(300_000L); // 5분 타임아웃
+        ScenarioProgressStore.Execution exec = progressStore.get(id);
+        if (exec == null) {
+            emitter.completeWithError(new IllegalArgumentException("execution not found: " + id));
+            return emitter;
+        }
+        exec.addEmitter(emitter);
+        return emitter;
     }
 
     // ── UI 인스펙터 ───────────────────────────────────────────────────────────

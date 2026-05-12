@@ -61,7 +61,6 @@ scanButton.addEventListener('click', async () => {
     setStatus('요소 스캔 중...', '');
     resultBox.textContent = '';
     scanButton.disabled = true;
-    createScenarioButton.disabled = true;
     scannedElements = [];
 
     try {
@@ -79,8 +78,8 @@ scanButton.addEventListener('click', async () => {
 
         scannedElements = data;
         scanParams = { url, browser, headless, timeout };
-        setStatus(`스캔 완료 - ${data.length}개 요소 발견. [시나리오 작성] 버튼으로 시나리오를 구성하세요.`, 'success');
-        createScenarioButton.disabled = false;
+        setStatus(`스캔 완료 - ${data.length}개 요소 발견.`, 'success');
+        openModal('scan');
     } catch(e) {
         setStatus('스캔 중 오류 발생', 'error');
         resultBox.textContent = e.message;

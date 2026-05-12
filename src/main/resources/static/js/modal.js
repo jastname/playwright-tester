@@ -1,13 +1,11 @@
-createScenarioButton.addEventListener('click', openModal);
 createScenarioInspectorButton.addEventListener('click', function() {
-    openModal();
-    document.querySelectorAll('.modal-tab').forEach(function(t) { t.classList.remove('active'); });
-    document.querySelectorAll('.modal-tab-content').forEach(function(c) { c.classList.remove('active'); });
-    document.querySelector('.modal-tab[data-tab="inspector"]').classList.add('active');
-    document.getElementById('tab-inspector').classList.add('active');
+    openModal('inspector');
 });
 
-function openModal() {
+function openModal(mode) {
+    // mode: 'scan' | 'inspector' (기본값: 'scan')
+    const activeMode = mode || 'scan';
+
     scenarioNameInput.value = '';
     modalUrlInput.value        = scanParams.url     || urlInput.value.trim();
     modalBrowserSelect.value   = scanParams.browser || browserSelect.value;
@@ -20,10 +18,14 @@ function openModal() {
 
     inspectorPicked = [];
     renderInspectorList();
-    document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.modal-tab-content').forEach(c => c.classList.remove('active'));
-    document.querySelector('.modal-tab[data-tab="scan"]').classList.add('active');
-    document.getElementById('tab-scan').classList.add('active');
+
+    // 탭 콘텐츠 표시/숨김: 해당 모드만 표시
+    document.querySelectorAll('.modal-tab-content').forEach(c => {
+        c.classList.remove('active');
+        c.style.display = 'none';
+    });
+    const activeContent = document.getElementById(`tab-${activeMode}`);
+    if (activeContent) { activeContent.style.display = ''; activeContent.classList.add('active'); }
 
     renderModalTable();
     scenarioModal.classList.add('open');
@@ -180,6 +182,7 @@ modalSaveBtn.addEventListener('click', () => {
         browser:  modalBrowserSelect.value,
         headless: modalHeadlessInput.checked,
         timeout:  Number(modalTimeoutInput.value) || 30000,
+        fullPageScreenshot: document.getElementById('modalFullPageInput').checked,
         viewport: buildViewportFromModal(),
         steps
     });

@@ -31,19 +31,19 @@
         <div class="grid">
             <div class="form-row full">
                 <label for="urlInput">테스트할 URL</label>
-                <input id="urlInput" type="url" placeholder="https://example.com" value="https://landsoft.co.kr/" />
+                <input id="urlInput" style="width: 100%;" type="url" placeholder="https://example.com" value="https://landsoft.co.kr/" />
             </div>
             <div class="form-row">
                 <label for="browserSelect">브라우저 선택</label>
-                <select id="browserSelect">
+                <select id="browserSelect" style="width: 100%;">
                     <option value="chromium" selected>Chromium</option>
                     <option value="firefox">Firefox</option>
                     <option value="webkit">WebKit (Safari)</option>
                 </select>
             </div>
             <div class="form-row">
-                <label for="timeoutInput">Timeout (ms)</label>
-                <input id="timeoutInput" type="number" min="1000" step="1000" value="30000" />
+                <label for="timeoutInput">타임아웃 (ms)</label>
+                <input id="timeoutInput" style="width: 100%;" type="number" min="1000" step="1000" value="30000" />
             </div>
             <div class="form-row">
                 <label>실행 옵션</label>
@@ -63,10 +63,9 @@
 
         <div class="button-row">
             <button id="testButton">🌐 URL 접속 테스트</button>
-            <button id="scanButton" type="button">🔍 요소 스캔</button>
-            <button id="createScenarioButton" type="button" class="btn-accent" disabled>📝 시나리오 작성 (스캔 기반)</button>
-            <button id="createScenarioInspectorButton" type="button" class="btn-accent">🖱 시나리오 작성 (인스펙터)</button>
-            <button id="fillSampleButton" type="button" class="btn-secondary">샘플 URL 넣기</button>
+            <button id="createScenarioInspectorButton" type="button" class="btn-accent">🖱 시나리오 작성</button>
+            <button id="scanButton" type="button" class="btn-accent">🔍 시나리오 작성 (심화)</button>
+            <!-- <button id="fillSampleButton" type="button" class="btn-secondary">샘플 URL 넣기</button> -->
         </div>
 
         <div id="statusMessage" class="status"></div>
@@ -173,7 +172,7 @@
                 </div>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
                     <div>
-                        <label style="font-size:13px; margin-bottom:4px;">🌐 URL</label>
+                        <label style="font-size:13px; margin-bottom:4px;">🌐 시나리오 URL</label>
                         <input id="modalUrlInput" type="url" placeholder="https://example.com" style="width:100%; padding:8px 10px; border:1px solid #ccc; border-radius:8px; font-size:14px;" />
                     </div>
                     <div>
@@ -185,13 +184,19 @@
                         </select>
                     </div>
                     <div>
-                        <label style="font-size:13px; margin-bottom:4px;">⏱ Timeout (ms)</label>
+                        <label style="font-size:13px; margin-bottom:4px;">⏱ 타임아웃 (ms)</label>
                         <input id="modalTimeoutInput" type="number" min="1000" step="1000" style="width:100%; padding:8px 10px; border:1px solid #ccc; border-radius:8px; font-size:14px;" />
                     </div>
                     <div style="display:none; align-items:flex-end; gap:16px; padding-bottom:2px;">
                         <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; margin:0;">
                             <input id="modalHeadlessInput" type="checkbox" style="width:16px;height:16px;" checked />
                             Headless 모드
+                        </label>
+                    </div>
+                    <div style="display:flex; align-items:flex-end; gap:16px; padding-bottom:2px;">
+                        <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; margin:0;">
+                            <input id="modalFullPageInput" type="checkbox" style="width:16px;height:16px;" />
+                            전체 페이지 스크린샷
                         </label>
                     </div>
                 </div>
@@ -271,11 +276,8 @@
                 <div style="margin-top:10px; font-size:12px; color:#888;">💡 순서 번호를 입력한 요소 + 인스펙터에서 선택한 요소가 시나리오에 포함됩니다.</div>
             </div>
 
-            <!-- 탭 -->
-            <div class="modal-tabs">
-                <div class="modal-tab active" data-tab="scan">📋 스캔된 요소</div>
-                <div class="modal-tab" data-tab="inspector">🖱 브라우저 인스펙터</div>
-            </div>
+            <!-- 탭 구분선 -->
+            <div class="modal-tabs"></div>
 
             <!-- ── 탭 1: 스캔된 요소 ── -->
             <div class="modal-tab-content active" id="tab-scan">

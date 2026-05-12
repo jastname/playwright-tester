@@ -36,7 +36,6 @@ var headlessInput = document.getElementById('headlessInput');
 var fullPageInput = document.getElementById('fullPageInput');
 var testButton = document.getElementById('testButton');
 var scanButton = document.getElementById('scanButton');
-var createScenarioButton = document.getElementById('createScenarioButton');
 var createScenarioInspectorButton = document.getElementById('createScenarioInspectorButton');
 var fillSampleButton = document.getElementById('fillSampleButton');
 var statusMessage = document.getElementById('statusMessage');

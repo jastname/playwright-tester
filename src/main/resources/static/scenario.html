@@ -97,6 +97,7 @@
         .edit-field {
             padding: 6px 10px; border: 1px solid #ccc; border-radius: 8px;
             font-size: 14px; background: #fff;
+            height: 38px; box-sizing: border-box; line-height: 1.4;
         }
         .edit-field:focus { outline: none; border-color: #1a5fd1; box-shadow: 0 0 0 2px rgba(26,95,209,0.15); }
 
@@ -121,6 +122,21 @@
             background: #f8f9fa; border: 1px dashed #ccc; border-radius: 10px;
         }
         .add-step-row input, .add-step-row select { flex: 1; min-width: 120px; }
+
+        /* ── 실시간 단계 상태 ── */
+        .step-status-pending { color: #bbb; font-size: 12px; }
+        .step-status-running {
+            display: inline-flex; align-items: center; gap: 5px;
+            font-size: 12px; color: #e65100; font-weight: bold;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinner {
+            display: inline-block; width: 13px; height: 13px;
+            border: 2px solid #ffe0b2; border-top-color: #e65100;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            flex-shrink: 0;
+        }
     </style>
 </head>
 <body>
@@ -148,26 +164,30 @@
             <button id="resetBtn" class="btn-secondary" type="button">↺ 결과 초기화</button>
             <button id="screenshotViewBtn" type="button" style="background:#00838f;color:#fff;border:none;padding:12px 18px;border-radius:10px;font-size:15px;cursor:pointer;">🖼 스크린샷 보기</button>
             <button id="editToggleBtn" type="button" style="background:#7b1fa2;color:#fff;border:none;padding:12px 18px;border-radius:10px;font-size:15px;cursor:pointer;">✏️ 편집</button>
-            <span class="hint">각 단계의 <b>▶</b> 버튼으로 순차 실행 · 이전 단계를 실행해야 다음 단계 버튼이 활성화됩니다.</span>
+            <span class="hint">각 단계의 <b>▶</b> 버튼으로 실행 · 중간 단계를 누르면 이전 단계들이 자동으로 먼저 실행됩니다.</span>
         </div>
 
         <!-- ── 스크린샷 모달 ── -->
         <div id="screenshotModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:1500; overflow-y:auto; padding:40px 20px;">
             <div style="background:#fff; border-radius:16px; max-width:1100px; margin:0 auto; box-shadow:0 12px 48px rgba(0,0,0,0.22); display:flex; flex-direction:column;">
                 <!-- 모달 헤더 -->
-                <div style="padding:18px 24px; border-bottom:1px solid #eee; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; flex-shrink:0;">
-                    <div style="font-size:17px; font-weight:bold;">🖼 스크린샷 — <span id="ssModalTitle"></span></div>
-                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                        <select id="ssStepFilter" style="padding:6px 10px; border:1px solid #ccc; border-radius:8px; font-size:13px;">
-                            <option value="">전체 단계</option>
-                        </select>
-                        <select id="ssStatusFilter" style="padding:6px 10px; border:1px solid #ccc; border-radius:8px; font-size:13px;">
-                            <option value="">성공/실패 전체</option>
-                            <option value="success">✓ 성공만</option>
-                            <option value="error">✗ 실패만</option>
-                        </select>
-                        <button id="ssRefreshBtn" class="btn-secondary" type="button" style="font-size:13px; padding:6px 14px;">🔄 새로고침</button>
-                        <button id="ssCloseBtn" type="button" style="background:none; border:none; font-size:22px; cursor:pointer; color:#555; padding:2px 8px; line-height:1;">✕</button>
+                <div style="padding:16px 24px 14px; border-bottom:1px solid #eee; flex-shrink:0; display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+                    <!-- 제목 -->
+                    <div style="font-size:17px; font-weight:bold; padding-top:4px;">🖼 스크린샷 — <span id="ssModalTitle"></span></div>
+                    <!-- 우측: 닫기 버튼 + 그 아래 필터 -->
+                    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px; flex-shrink:0;">
+                        <button id="ssCloseBtn" type="button" style="background:none; border:none; font-size:22px; cursor:pointer; color:#888; line-height:1; padding:0 4px;" title="닫기">✕</button>
+                        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
+                            <select id="ssStepFilter" style="width:100px; padding:5px 8px; border:1px solid #ccc; border-radius:8px; font-size:12px;">
+                                <option value="">전체 단계</option>
+                            </select>
+                            <select id="ssStatusFilter" style="width:110px; padding:5px 8px; border:1px solid #ccc; border-radius:8px; font-size:12px;">
+                                <option value="">전체</option>
+                                <option value="success">✓ 성공만</option>
+                                <option value="error">✗ 실패만</option>
+                            </select>
+                            <button id="ssRefreshBtn" class="btn-secondary" type="button" style="font-size:12px; padding:5px 12px;">🔄 새로고침</button>
+                        </div>
                     </div>
                 </div>
                 <!-- 모달 바디 -->
@@ -196,7 +216,7 @@
                         <input id="editName" class="edit-field" type="text" style="width:100%;" />
                     </div>
                     <div>
-                        <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">URL</label>
+                        <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">시나리오 URL</label>
                         <input id="editUrl" class="edit-field" type="url" style="width:100%;" />
                     </div>
                     <div>
@@ -208,12 +228,16 @@
                         </select>
                     </div>
                     <div>
-                        <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">Timeout (ms)</label>
+                        <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">타임아웃 (ms)</label>
                         <input id="editTimeout" class="edit-field" type="number" min="1000" step="1000" style="width:100%;" />
                     </div>
                     <div style="display:flex; align-items:center; gap:8px; padding-top:18px;">
                         <input id="editHeadless" type="checkbox" style="width:16px;height:16px;" />
                         <label for="editHeadless" style="font-size:13px; cursor:pointer; margin:0;">Headless 모드</label>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px; padding-top:18px;">
+                        <input id="editFullPage" type="checkbox" style="width:16px;height:16px;" />
+                        <label for="editFullPage" style="font-size:13px; cursor:pointer; margin:0;">전체 페이지 스크린샷</label>
                     </div>
                 </div>
 
@@ -409,7 +433,7 @@
         document.getElementById('scUrl').textContent       = '🌐 ' + scenario.url;
         document.getElementById('scBrowser').textContent   = '🖥 ' + scenario.browser;
         document.getElementById('scTimeout').textContent   = '⏱ ' + scenario.timeout + 'ms';
-        document.getElementById('scHeadless').textContent  = scenario.headless ? '👻 Headless ON' : '🖥 Headless OFF';
+        document.getElementById('scHeadless').textContent  = scenario.headless ? 'Headless ON' : 'Headless OFF';
         document.getElementById('scStepCount').textContent = '📋 ' + scenario.steps.length + '단계';
         // viewport pill
         let vpPill = document.getElementById('scViewport');
@@ -452,12 +476,10 @@
                 : `<span style="color:#ddd;font-size:12px;">—</span>`;
 
             // 버튼 활성화 조건:
-            //  - 첫 단계(i===0): 항상 활성
-            //  - 나머지: 바로 위 단계(i-1)가 실행됐어야 활성 (성공/실패 무관)
+            //  - 항상 활성 (어느 단계든 클릭 가능 — 중간 단계 클릭 시 이전 단계들이 자동 실행됨)
             //  - 실행 중(runningIdx >= 0)에는 전부 비활성
-            const prevDone = i === 0 || stepResults[i - 1] != null;
-            const canRun   = prevDone && runningIdx < 0;
-            const btnLabel = res != null ? '↺ 재실행' : '▶';
+            const canRun = runningIdx < 0;
+            const btnLabel = '▶';
 
             tr.innerHTML = `
                 <td><div class="step-num ${numCls}">${s.order}</div></td>
@@ -466,9 +488,9 @@
                 <td style="font-size:12px;color:#666;">${s.fillText ? escapeHtml(s.fillText) : '<span style="color:#bbb;">—</span>'}</td>
                 <td><div class="selector-cell" title="${escapeHtml(s.selector)}">${escapeHtml(s.selector)}</div></td>
                 <td><button class="step-run-btn" data-idx="${i}" ${canRun ? '' : 'disabled'}>${btnLabel}</button></td>
-                <td>${statusHtml}</td>
-                <td>${thumbHtml}</td>
-                <td>${errHtml}</td>
+                <td class="step-status-cell">${statusHtml}</td>
+                <td class="step-thumb-cell">${thumbHtml}</td>
+                <td class="step-err-cell">${errHtml}</td>
             `;
             tbody.appendChild(tr);
         });
@@ -481,52 +503,131 @@
             el.addEventListener('click', () => el.classList.toggle('expanded')));
     }
 
-    // ── 단계 하나 실행 ────────────────────────────────────────────────
-    // 단계 i 실행 시 0~i 까지 누적 실행 (이전 단계 상태를 그대로 이어받기 위함)
-    async function runStep(i) {
-        if (runningIdx >= 0) return;
-        runningIdx = i;
-
-        // 전체 버튼 잠금 + 해당 행 running 표시
-        setGlobalBtns(true);
-        const tr  = document.getElementById('step-row-' + i);
-        tr.className = 'running';
-        tr.querySelector('.step-num').className = 'step-num running';
+    // ── 행 상태 헬퍼 ──────────────────────────────────────────────────
+    function setRowPending(idx) {
+        const tr = document.getElementById('step-row-' + idx);
+        if (!tr) return;
+        tr.className = '';
+        const num = tr.querySelector('.step-num');
+        if (num) num.className = 'step-num';
+        const sc = tr.querySelector('.step-status-cell');
+        if (sc) sc.innerHTML = `<span class="step-status-pending">⏳ 대기 중</span>`;
         const btn = tr.querySelector('.step-run-btn');
-        btn.classList.add('running');
-        btn.textContent = '⏳ 실행 중';
-        tr.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (btn) { btn.classList.remove('running'); btn.textContent = '▶'; btn.disabled = true; }
+    }
+
+    function setRowRunning(idx) {
+        const tr = document.getElementById('step-row-' + idx);
+        if (!tr) return;
+        tr.className = 'running';
+        const num = tr.querySelector('.step-num');
+        if (num) num.className = 'step-num running';
+        const sc = tr.querySelector('.step-status-cell');
+        if (sc) sc.innerHTML = `<span class="step-status-running"><span class="spinner"></span> 진행 중</span>`;
+        const btn = tr.querySelector('.step-run-btn');
+        if (btn) { btn.classList.add('running'); btn.textContent = '⏳'; btn.disabled = true; }
+        tr.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function setRowResult(idx, sr) {
+        const tr = document.getElementById('step-row-' + idx);
+        if (!tr) return;
+        tr.className = sr.status === 'success' ? 'done-success' : 'done-error';
+        const num = tr.querySelector('.step-num');
+        if (num) num.className = 'step-num ' + (sr.status === 'success' ? 'success' : 'error');
+        const sc = tr.querySelector('.step-status-cell');
+        if (sc) sc.innerHTML = sr.status === 'success'
+            ? `<span class="badge badge-success">✓ 성공</span>`
+            : `<span class="badge badge-error">✗ 실패</span>`;
+        const tc = tr.querySelector('.step-thumb-cell');
+        if (tc) {
+            if (sr.screenshotUrl) {
+                tc.innerHTML = `<img class="step-screenshot" src="${escapeHtml(sr.screenshotUrl)}" data-url="${escapeHtml(sr.screenshotUrl)}" data-label="단계 ${idx+1}" alt="ss" />`;
+                tc.querySelector('img').addEventListener('click', e => openLightbox(e.target.dataset.url, e.target.dataset.label));
+            } else {
+                tc.innerHTML = `<span style="color:#ddd;font-size:12px;">—</span>`;
+            }
+        }
+        const ec = tr.querySelector('.step-err-cell');
+        if (ec) {
+            if (sr.errorMessage) {
+                ec.innerHTML = `<div class="step-error-msg">${escapeHtml(sr.errorMessage)}</div>`;
+                ec.querySelector('.step-error-msg').addEventListener('click', e => e.target.classList.toggle('expanded'));
+            } else {
+                ec.innerHTML = `<span style="color:#ddd;font-size:12px;">—</span>`;
+            }
+        }
+        const btn = tr.querySelector('.step-run-btn');
+        if (btn) { btn.classList.remove('running'); btn.textContent = '▶'; btn.disabled = false; }
+    }
+
+    // ── 단계 하나 실행 (SSE) ─────────────────────────────────────────
+    // 단계 i 실행 시 0~i 까지 누적 실행
+    async function runStep(targetIdx) {
+        if (runningIdx >= 0) return;
+        runningIdx = targetIdx;
+        setGlobalBtns(true);
+
+        // 0~targetIdx 모두 대기 상태 표시
+        for (let k = 0; k <= targetIdx; k++) setRowPending(k);
 
         try {
-            // 0번부터 i번까지 누적 전송 → 브라우저에서 이전 단계 상태를 유지한 채 실행
-            const stepsToRun = scenario.steps.slice(0, i + 1).map(s =>
-                ({ selector: s.selector, interactionType: s.interactionType, fillText: s.fillText, waitMs: s.waitMs, order: s.order })
+            const stepsToRun = scenario.steps.slice(0, targetIdx + 1).map(s =>
+                ({ selector: s.selector, interactionType: s.interactionType,
+                   fillText: s.fillText, waitMs: s.waitMs, order: s.order })
             );
-            const res = await fetch('/api/browser/test-scenario', {
+            const startRes = await fetch('/api/browser/test-scenario-async', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     url: scenario.url, browser: scenario.browser,
                     headless: scenario.headless, timeout: scenario.timeout,
                     steps: stepsToRun,
                     scenarioId: scenario.id, scenarioName: scenario.name,
-                    viewport: scenario.viewport || null
+                    viewport: scenario.viewport || null,
+                    fullPageScreenshot: scenario.fullPageScreenshot || false
                 })
             });
-            const data = await res.json();
-            // 반환된 각 단계 결과를 stepResults에 반영 (중간 단계 포함)
-            (data.steps || []).forEach((sr, idx) => {
-                stepResults[idx] = sr;
+            const { executionId } = await startRes.json();
+
+            await new Promise((resolve, reject) => {
+                const es = new EventSource(`/api/browser/test-scenario-progress/${executionId}`);
+
+                es.addEventListener('step-start', e => {
+                    const d = JSON.parse(e.data);
+                    setRowRunning(d.step - 1);
+                });
+
+                es.addEventListener('step-result', e => {
+                    const d = JSON.parse(e.data);
+                    const idx = d.step - 1;
+                    stepResults[idx] = { status: d.status, screenshotUrl: d.screenshotUrl, errorMessage: d.errorMessage };
+                    setRowResult(idx, stepResults[idx]);
+                });
+
+                es.addEventListener('scenario-complete', e => {
+                    es.close();
+                    resolve();
+                });
+
+                es.addEventListener('scenario-error', e => {
+                    const d = JSON.parse(e.data);
+                    es.close();
+                    reject(new Error(d.errorMessage || '알 수 없는 오류'));
+                });
+
+                es.onerror = () => { es.close(); reject(new Error('SSE 연결 오류')); };
             });
+
         } catch(e) {
-            stepResults[i] = { status: 'error', errorMessage: e.message };
+            stepResults[targetIdx] = { status: 'error', errorMessage: e.message };
+            setRowResult(targetIdx, stepResults[targetIdx]);
         }
 
         runningIdx = -1;
-        // 테이블 재렌더링 → 다음 단계 버튼이 자동 활성화
-        renderSteps();
         setGlobalBtns(false);
+        // 단계 버튼 재활성화 – 완료된 행 버튼 상태 정리
+        renderSteps();
 
-        // 전체 완료 시 요약 표시
         if (stepResults.filter(r => r != null).length === scenario.steps.length) {
             showSummary({
                 successCount: stepResults.filter(r => r && r.status === 'success').length,
@@ -535,27 +636,62 @@
         }
     }
 
-    // ── 전체 실행 ────────────────────────────────────────────────────
+    // ── 전체 실행 (SSE) ──────────────────────────────────────────────
     document.getElementById('runAllBtn').addEventListener('click', async () => {
-        resetResults(false);
+        resetResults(true);   // 테이블 초기화
         setGlobalBtns(true);
         document.getElementById('runAllBtn').textContent = '⏳ 실행 중...';
+
+        // 모든 행을 대기 상태로 표시
+        scenario.steps.forEach((_, i) => setRowPending(i));
+
         try {
-            const apiSteps = scenario.steps.map(({ selector, interactionType, fillText, waitMs }) =>
-                ({ selector, interactionType, fillText, waitMs }));
-            const res = await fetch('/api/browser/test-scenario', {
+            const apiSteps = scenario.steps.map(({ selector, interactionType, fillText, waitMs, order }) =>
+                ({ selector, interactionType, fillText, waitMs, order }));
+
+            const startRes = await fetch('/api/browser/test-scenario-async', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     url: scenario.url, browser: scenario.browser,
                     headless: scenario.headless, timeout: scenario.timeout,
                     steps: apiSteps, scenarioId: scenario.id, scenarioName: scenario.name,
-                    viewport: scenario.viewport || null
+                    viewport: scenario.viewport || null,
+                    fullPageScreenshot: scenario.fullPageScreenshot || false
                 })
             });
-            const data = await res.json();
-            (data.steps || []).forEach((sr, i) => { stepResults[i] = sr; });
-            renderSteps();
-            showSummary(data);
+            const { executionId } = await startRes.json();
+
+            await new Promise((resolve, reject) => {
+                const es = new EventSource(`/api/browser/test-scenario-progress/${executionId}`);
+
+                es.addEventListener('step-start', e => {
+                    const d = JSON.parse(e.data);
+                    setRowRunning(d.step - 1);
+                });
+
+                es.addEventListener('step-result', e => {
+                    const d = JSON.parse(e.data);
+                    const idx = d.step - 1;
+                    stepResults[idx] = { status: d.status, screenshotUrl: d.screenshotUrl, errorMessage: d.errorMessage };
+                    setRowResult(idx, stepResults[idx]);
+                });
+
+                es.addEventListener('scenario-complete', e => {
+                    const d = JSON.parse(e.data);
+                    showSummary(d);
+                    es.close();
+                    resolve();
+                });
+
+                es.addEventListener('scenario-error', e => {
+                    const d = JSON.parse(e.data);
+                    es.close();
+                    reject(new Error(d.errorMessage || '알 수 없는 오류'));
+                });
+
+                es.onerror = () => { es.close(); reject(new Error('SSE 연결 오류')); };
+            });
+
         } catch(e) {
             alert('실행 중 오류: ' + e.message);
         } finally {
@@ -726,6 +862,7 @@
         document.getElementById('editBrowser').value    = scenario.browser;
         document.getElementById('editTimeout').value    = scenario.timeout;
         document.getElementById('editHeadless').checked = scenario.headless;
+        document.getElementById('editFullPage').checked  = scenario.fullPageScreenshot || false;
 
         // viewport 로딩
         const presetSel = document.getElementById('editDevicePreset');
@@ -829,12 +966,13 @@
         const browser = document.getElementById('editBrowser').value;
         const timeout = Number(document.getElementById('editTimeout').value);
         const headless = document.getElementById('editHeadless').checked;
+        const fullPageScreenshot = document.getElementById('editFullPage').checked;
         if (!name)  { alert('시나리오 이름을 입력해주세요.'); return; }
         if (!url)   { alert('URL을 입력해주세요.'); return; }
         if (timeout < 1000) { alert('timeout은 1000ms 이상이어야 합니다.'); return; }
         if (editSteps.length === 0) { alert('단계가 하나도 없습니다.'); return; }
         editSteps.forEach((s, j) => { s.order = j + 1; });
-        const updated = { ...scenario, name, url, browser, timeout, headless, viewport: buildEditViewport(), steps: editSteps };
+        const updated = { ...scenario, name, url, browser, timeout, headless, fullPageScreenshot, viewport: buildEditViewport(), steps: editSteps };
         document.getElementById('editSaveBtn').disabled = true;
         document.getElementById('editSaveBtn').textContent = '⏳ 저장 중...';
         try {

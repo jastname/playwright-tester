@@ -250,7 +250,7 @@ public class BrowserTestController {
      */
     @PostMapping("/test-scenario-async")
     public Map<String, Object> testScenarioAsync(@Valid @RequestBody ScenarioRequest request) {
-        ScenarioProgressStore.Execution exec = progressStore.create();
+        ScenarioProgressStore.Execution exec = progressStore.create(request.getScenarioId());
 
         Thread.ofVirtual().start(() -> {
             try {
@@ -281,6 +281,33 @@ public class BrowserTestController {
         });
 
         return Map.of("executionId", exec.id);
+    }
+
+    /**
+     * 특정 시나리오의 현재 활성 실행 ID를 반환합니다.
+     * 실행 중이 아니면 {"running": false}, 실행 중이면 {"running": true, "executionId": "..."}
+     */
+    @GetMapping("/active-execution/{scenarioId}")
+    public Map<String, Object> getActiveExecution(@PathVariable("scenarioId") Long scenarioId) {
+        String execId = progressStore.getExecutionIdByScenarioId(scenarioId);
+        if (execId == null) return Map.of("running", false);
+        return Map.of("running", true, "executionId", execId);
+    }
+
+    /**
+     * 현재 활성 중인 모든 시나리오 실행 목록을 반환합니다.
+     * {"active": {"scenarioId": "executionId", ...}}
+     */
+    @GetMapping("/active-executions")
+    public Map<String, Object> getActiveExecutions() {
+        java.util.Map<String, String> active = new java.util.LinkedHashMap<>();
+        progressStore.getActiveByScenario().forEach((scId, execId) -> {
+            String realExecId = progressStore.getExecutionIdByScenarioId(scId);
+            if (realExecId != null) {
+                active.put(String.valueOf(scId), realExecId);
+            }
+        });
+        return Map.of("active", active);
     }
 
     /**
@@ -471,6 +498,82 @@ public class BrowserTestController {
                 .contentType(MediaType.IMAGE_PNG)
                 .body(new FileSystemResource(file));
     }
+    
+    /**
+     * scenarioId 에 속한 스크린샷을 stepOrder 별로 그룹핑하여
+     * 각 단계에서 가장 최신(createdAt 기준) 파일 1개씩만 반환합니다.
+     * 응답: {"steps": [{"stepOrder": 1, "name": "...", "createdAt": "...", ...}, ...]}
+     */
+    @GetMapping("/screenshots/latest-by-step")
+    public Map<String, Object> latestScreenshotList(
+            @RequestParam(name = "scenarioId") Long scenarioId) throws IOException {
+
+        Path dir = screenshotProperties.getDirectoryPath();
+        if (!Files.exists(dir)) {
+            return Map.of("steps", List.of());
+        }
+
+        // 캐시 활용 (없으면 파일 시스템 스캔)
+        List<Map<String, Object>> all = screenshotCache;
+        if (all == null) {
+            synchronized (this) {
+                all = screenshotCache;
+                if (all == null) {
+                    com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+                    List<Map<String, Object>> files = new ArrayList<>();
+                    try (var stream = Files.list(dir)) {
+                        for (Path p : stream.filter(p -> p.toString().endsWith(".png")).toList()) {
+                            BasicFileAttributes attr = Files.readAttributes(p, BasicFileAttributes.class);
+                            java.util.LinkedHashMap<String, Object> entry = new java.util.LinkedHashMap<>();
+                            entry.put("name", p.getFileName().toString());
+                            entry.put("size", attr.size());
+                            entry.put("createdAt", attr.creationTime().toInstant().toString());
+                            Path sidecar = dir.resolve(p.getFileName().toString().replace(".png", ".json"));
+                            if (Files.exists(sidecar)) {
+                                try {
+                                    @SuppressWarnings("unchecked")
+                                    Map<String, Object> meta = om.readValue(sidecar.toFile(), Map.class);
+                                    entry.put("scenarioId",   meta.get("scenarioId"));
+                                    entry.put("scenarioName", meta.get("scenarioName"));
+                                    entry.put("stepOrder",    meta.get("stepOrder"));
+                                    entry.put("stepStatus",   meta.get("status"));
+                                } catch (Exception ignored) {}
+                            }
+                            files.add(entry);
+                        }
+                    }
+                    files.sort((a, b) -> ((String) b.get("createdAt")).compareTo((String) a.get("createdAt")));
+                    screenshotCache = files;
+                    all = files;
+                }
+            }
+        }
+
+        // scenarioId 필터링 후 stepOrder별 최신 1개 추출
+        java.util.Map<Object, Map<String, Object>> latestByStep = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> entry : all) {
+            Object sid = entry.get("scenarioId");
+            if (sid == null) continue;
+            // scenarioId 비교 (Number 타입 차이 대응)
+            if (!String.valueOf(sid).equals(String.valueOf(scenarioId))) continue;
+            Object stepOrder = entry.get("stepOrder");
+            // 이미 최신이 있으면 스킵 (all이 createdAt 내림차순이므로 첫 번째가 최신)
+            latestByStep.putIfAbsent(stepOrder, entry);
+        }
+
+        // stepOrder 오름차순 정렬
+        List<Map<String, Object>> steps = latestByStep.entrySet().stream()
+                .sorted((a, b) -> {
+                    int oa = a.getKey() instanceof Number n ? n.intValue() : 0;
+                    int ob = b.getKey() instanceof Number n ? n.intValue() : 0;
+                    return Integer.compare(oa, ob);
+                })
+                .map(Map.Entry::getValue)
+                .toList();
+
+        return Map.of("steps", steps);
+    }
+    
 
     @DeleteMapping("/screenshots")
     public Map<String, Object> screenshotDeleteAll() throws IOException {

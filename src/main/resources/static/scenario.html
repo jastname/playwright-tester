@@ -422,7 +422,17 @@
             document.title = `${scenario.name} — 시나리오 상세`;
             renderInfo();
             renderSteps();
+            loadScenarioLastScreenshots();
             document.getElementById('main').style.display = '';
+
+            // 이미 진행 중인 실행이 있으면 SSE 에 재연결
+            try {
+                const activeRes = await fetch('/api/browser/active-execution/' + scenarioId);
+                const activeData = await activeRes.json();
+                if (activeData.running && activeData.executionId) {
+                    reconnectToExecution(activeData.executionId);
+                }
+            } catch(e) { /* ignore */ }
         } catch(e) { showNotFound(); }
     })();
 
@@ -559,6 +569,58 @@
         }
         const btn = tr.querySelector('.step-run-btn');
         if (btn) { btn.classList.remove('running'); btn.textContent = '▶'; btn.disabled = false; }
+    }
+
+    // ── 진행 중인 실행에 재연결 ──────────────────────────────────────
+    // 목록 페이지에서 실행이 시작된 뒤 상세 페이지로 이동했을 때도 실시간 반영
+    function reconnectToExecution(executionId) {
+        if (runningIdx >= 0) return;   // 이미 UI 에서 실행 중이면 중복 방지
+        runningIdx = 0;                // 실행 중 플래그 (정확한 인덱스는 SSE 이벤트로 갱신)
+        setGlobalBtns(true);
+
+        // 모든 행을 대기 상태로 초기화
+        scenario.steps.forEach((_, i) => setRowPending(i));
+
+        const es = new EventSource(`/api/browser/test-scenario-progress/${executionId}`);
+
+        es.addEventListener('step-start', e => {
+            const d = JSON.parse(e.data);
+            runningIdx = d.step - 1;
+            // 이전 완료 행 유지, 현재 행만 running 상태로
+            setRowRunning(d.step - 1);
+        });
+
+        es.addEventListener('step-result', e => {
+            const d = JSON.parse(e.data);
+            const idx = d.step - 1;
+            stepResults[idx] = { status: d.status, screenshotUrl: d.screenshotUrl, errorMessage: d.errorMessage };
+            setRowResult(idx, stepResults[idx]);
+        });
+
+        es.addEventListener('scenario-complete', e => {
+            const d = JSON.parse(e.data);
+            es.close();
+            runningIdx = -1;
+            setGlobalBtns(false);
+            renderSteps();
+            showSummary(d);
+        });
+
+        es.addEventListener('scenario-error', e => {
+            const d = JSON.parse(e.data);
+            es.close();
+            runningIdx = -1;
+            setGlobalBtns(false);
+            renderSteps();
+            alert('실행 중 오류: ' + (d.errorMessage || '알 수 없는 오류'));
+        });
+
+        es.onerror = () => {
+            es.close();
+            runningIdx = -1;
+            setGlobalBtns(false);
+            renderSteps();
+        };
     }
 
     // ── 단계 하나 실행 (SSE) ─────────────────────────────────────────
@@ -783,6 +845,40 @@
             document.getElementById('ssLoadingMsg').textContent = '불러오기 실패: ' + e.message;
         }
     }
+    
+    async function loadScenarioLastScreenshots() {
+        try {
+            const res  = await fetch('/api/browser/screenshots/latest-by-step?scenarioId=' + scenarioId);
+            const data = await res.json();
+            const steps = data.steps || [];
+
+            console.log('최신 스크린샷 목록:', steps);
+
+            // 각 단계 행의 썸네일 셀에 마지막 스크린샷 반영
+            steps.forEach(f => {
+                if (f.stepOrder == null) return;
+                const idx = scenario.steps.findIndex(s => s.order === f.stepOrder);
+                if (idx < 0) return;
+                // 이미 실행 결과의 스크린샷이 있으면 덮어쓰지 않음
+                if (stepResults[idx] && stepResults[idx].screenshotUrl) return;
+
+                const url = '/api/browser/screenshots/file/' + f.name;
+                const tr  = document.getElementById('step-row-' + idx);
+                if (!tr) return;
+                const thumbCell = tr.querySelector('.step-thumb-cell');
+                if (!thumbCell) return;
+                const label = '단계 ' + f.stepOrder;
+                thumbCell.innerHTML = `<img class="step-screenshot" src="${escapeHtml(url)}" data-url="${escapeHtml(url)}" data-label="${escapeHtml(label)}" alt="ss" />`;
+                thumbCell.querySelector('img').addEventListener('click', function() {
+                    openLightbox(this.dataset.url, this.dataset.label);
+                });
+            });
+        } catch(e) {
+            console.error('스크린샷 불러오기 실패:', e);
+        }
+    }
+    
+
 
     function renderScreenshots() {
         const gallery   = document.getElementById('ssGallery');

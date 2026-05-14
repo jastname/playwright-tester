@@ -32,14 +32,21 @@ public class PlaywrightService {
     // ── UI 인스펙터: 브라우저에 주입할 스크립트 ───────────────────────────────
     private static final String INSPECTOR_SCRIPT = """
         (function() {
-          if (window.__inspectorInjected) return;
-          window.__inspectorInjected = true;
+          window.__inspectorQueue = window.__inspectorQueue || [];
 
-          function __initInspector() {
-            if (!document.body) {
-              document.addEventListener('DOMContentLoaded', __initInspector);
-              return;
-            }
+		  if (window.__inspectorInjected && window.__inspectorReady) return;
+		  window.__inspectorInjected = true;
+		
+		  function __initInspector() {
+		    window.__inspectorQueue = window.__inspectorQueue || [];
+		
+		    if (!document.body) {
+		      setTimeout(__initInspector, 50);
+		      return;
+		    }
+		
+		    if (window.__inspectorReady) return;
+		    window.__inspectorReady = true;
 
             // ── 오버레이 (server.js 방식) ──────────────────────────
             var overlay = document.getElementById('__insp_overlay');
@@ -342,12 +349,26 @@ public class PlaywrightService {
             }
 
             function queueInfo(info) {
+              console.log('[Inspector] captured element:', info);
+              console.log('[Inspector] queued snapshot:', JSON.stringify([info]));
+              // Direct Java callback (primary: event-driven, no polling race condition)
+              // JSON string 으로 넘겨야 Playwright 내부 직렬화 버그를 피할 수 있음
+              if (typeof window.__inspectorCapture === 'function') {
+                try {
+                  window.__inspectorCapture(JSON.stringify(info));
+                  return; // success – skip legacy queue
+                } catch(cbErr) {
+                  console.warn('[Inspector] direct callback failed, falling back to queue', cbErr);
+                }
+              }
+              // Fallback: polling-based queue
               if (!window.__inspectorQueue) window.__inspectorQueue = [];
               window.__inspectorQueue.push(info);
               console.log('[Inspector] queued element, queue size:', window.__inspectorQueue.length);
+              console.log('[Inspector] current queue:', window.__inspectorQueue);
             }
 
-            // ── 우클릭: 캡처 (server.js 동일 방식) ──────────────
+            // ── 우클릭: 캡처  ──────────────
             document.addEventListener('contextmenu', function(e) {
               if (!active) return;
               var el = document.elementFromPoint(e.clientX, e.clientY);
@@ -417,6 +438,27 @@ public class PlaywrightService {
                 // ── sessionId 먼저 주입 (INSPECTOR_SCRIPT에서 사용) ──
                 ctx.addInitScript("window.__inspectorSessionId = '" + session.id + "';");
 
+                // ── 직접 Java 콜백 등록: 폴링 타이밍 이슈 완전 해결 ──
+                // JS 쪽에서 JSON.stringify(info) 로 문자열을 넘기므로 Map 직렬화 버그 없음
+                ctx.exposeFunction("__inspectorCapture", args -> {
+                    try {
+                        if (args != null && args.length > 0 && args[0] instanceof String jsonStr) {
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> info = OBJECT_MAPPER.readValue(jsonStr,
+                                    new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+                            info.put("capturedAt", System.currentTimeMillis());
+                            session.elements.add(info);
+							/*
+							 * log.info("[Inspector] ✅ 직접 캡처 성공: selector={}, text={}",
+							 * info.get("selector"), info.get("text"));
+							 */
+                        }
+                    } catch (Exception cbEx) {
+                        log.warn("[Inspector] exposeFunction 콜백 처리 오류", cbEx);
+                    }
+                    return null;
+                });
+
                 // ── 매 페이지 로드마다 인스펙터 스크립트 주입 ──
                 ctx.addInitScript(INSPECTOR_SCRIPT);
 
@@ -461,17 +503,44 @@ public class PlaywrightService {
                     // ── 활성 페이지에서 __inspectorQueue 드레인 ──
                     for (Page p : ctx.pages()) {
                         try {
-                            @SuppressWarnings("unchecked")
-                            List<Map<String, Object>> queued = (List<Map<String, Object>>) p.evaluate(
-                                "(function(){ var q = window.__inspectorQueue; window.__inspectorQueue = []; return q || []; })()"
-                            );
-                            for (Map<String, Object> item : queued) {
-                                var info = new java.util.LinkedHashMap<>(item);
-                                info.put("capturedAt", System.currentTimeMillis());
-                                session.elements.add(info);
-                                System.out.println("[Inspector][queue] captured: " + info.getOrDefault("selector", "?"));
-                            }
-                        } catch (Exception ignored) {}
+							/*
+							 * Object debug = p.evaluate(""" (() => ({ href: location.href, injected:
+							 * !!window.__inspectorInjected, hasQueue:
+							 * Object.prototype.hasOwnProperty.call(window, '__inspectorQueue'), isArray:
+							 * Array.isArray(window.__inspectorQueue), length:
+							 * Array.isArray(window.__inspectorQueue) ? window.__inspectorQueue.length : -1
+							 * }))() """); log.info("[Inspector debug] {}", debug);
+							 */
+
+                        	
+                        	Object raw = p.evaluate("""
+                        			(() => {
+                        			  const q = Array.isArray(window.__inspectorQueue) ? window.__inspectorQueue : [];
+                        			  window.__inspectorQueue = [];
+                        			  return q;
+                        			})()
+                        			""");
+
+							/*
+							 * log.info("[Inspector raw] class={}, value={}", raw == null ? "null" :
+							 * raw.getClass().getName(), raw );
+							 */
+                        	if (!(raw instanceof List<?> rawList)) {
+                        	    continue;
+                        	}
+
+                        	for (Object item : rawList) {
+                        	    if (!(item instanceof Map<?, ?> map)) continue;
+                       			    var info = new java.util.LinkedHashMap<String, Object>();
+                      			    map.forEach((k, v) -> {
+                   			        if (k != null) info.put(String.valueOf(k), v);
+                   			    });
+                  			    info.put("capturedAt", System.currentTimeMillis());
+                  			    session.elements.add(info);
+                  			}
+                        } catch (Exception e) {
+                        	log.warn("[Inspector] queue drain failed | url={}", p.url(), e);
+                        }
                     }
 
                     Thread.sleep(400);
@@ -514,7 +583,9 @@ public class PlaywrightService {
             Browser browser = launchBrowser(playwright, browserName, headless);
 
             try (browser) {
-                BrowserContext context = browser.newContext();
+                BrowserContext context = browser.newContext(new Browser.NewContextOptions()
+                        .setBypassCSP(true)
+                        .setIgnoreHTTPSErrors(true));
                 try (context) {
                     Page page = context.newPage();
                     page.setDefaultTimeout(timeout);
@@ -662,6 +733,36 @@ public class PlaywrightService {
                     results.push({ tag, type: el.getAttribute('type') || '', id: el.id || '', name: el.name || '', className, onclickAttr, text, placeholder: el.placeholder || '', interactionType: 'click', selector, visible: true, detectedBy: 'cursor:pointer' });
                 }
 
+                // 3) Shadow DOM 탐색
+                function collectShadowElements(root) {
+                    const nodes = root.querySelectorAll('*');
+                    for (const el of nodes) {
+                        if (seen.has(el)) continue;
+                        const tag = (el.tagName || '').toLowerCase();
+                        if (['script','style','meta','link','head','html','body','br','hr','img','svg','path'].includes(tag)) continue;
+                        const isInteractive = ['button','input','select','textarea','a'].includes(tag)
+                            || el.getAttribute('role') === 'button'
+                            || el.getAttribute('onclick');
+                        const style = window.getComputedStyle(el);
+                        const isPointer = style.cursor === 'pointer';
+                        if (!isInteractive && !isPointer) {
+                            if (el.shadowRoot) collectShadowElements(el.shadowRoot);
+                            continue;
+                        }
+                        seen.add(el);
+                        let interactionType = 'click';
+                        if (tag === 'select') interactionType = 'select';
+                        else if (tag === 'textarea' || (tag === 'input' && ['text','password','email','number','search','url','tel',''].includes((el.getAttribute('type')||'').toLowerCase()))) interactionType = 'fill';
+                        const rect = el.getBoundingClientRect();
+                        const visible = (rect.width > 0 && rect.height > 0) || el.offsetParent !== null;
+                        const text = (el.innerText || el.textContent || el.value || el.placeholder || el.getAttribute('aria-label') || el.getAttribute('title') || '').trim().slice(0, 100);
+                        const className = (el.className && typeof el.className === 'string') ? el.className.trim().slice(0, 120) : '';
+                        results.push({ tag, type: el.getAttribute('type') || '', id: el.id || '', name: el.name || '', className, onclickAttr: el.getAttribute('onclick') || '', text, placeholder: el.placeholder || '', interactionType, selector: buildSelector(el), visible, detectedBy: 'shadow-dom' });
+                        if (el.shadowRoot) collectShadowElements(el.shadowRoot);
+                    }
+                }
+                document.querySelectorAll('*').forEach(el => { if (el.shadowRoot) collectShadowElements(el.shadowRoot); });
+
                 return results;
             } catch(e) {
                 return [{ tag: 'error', type: '', id: '', name: '', className: '', onclickAttr: '', text: e.message, placeholder: '', interactionType: 'click', selector: '', visible: false }];
@@ -675,13 +776,24 @@ public class PlaywrightService {
         try (Playwright playwright = Playwright.create()) {
             Browser browser = launchBrowser(playwright, browserName, headless);
             try (browser) {
-                try (BrowserContext ctx = browser.newContext()) {
+                Browser.NewContextOptions ctxOpts = new Browser.NewContextOptions()
+                        .setBypassCSP(true)
+                        .setIgnoreHTTPSErrors(true)
+                        .setLocale("ko-KR")
+                        .setTimezoneId("Asia/Seoul")
+                        .setUserAgent(STEALTH_USER_AGENT)
+                        .setExtraHTTPHeaders(java.util.Map.of(
+                                "Accept-Language", "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7"
+                        ));
+                try (BrowserContext ctx = browser.newContext(ctxOpts)) {
+                    ctx.addInitScript(STEALTH_INIT_SCRIPT);
                     Page page = ctx.newPage();
                     page.setDefaultTimeout(timeout);
                     page.navigate(url, new Page.NavigateOptions().setWaitUntil(WaitUntilState.LOAD));
-                    // 동적 렌더링 요소 대기
+                    // 동적 렌더링 요소 대기 (SPA 고려: timeout 절반, 최대 15초)
+                    int idleTimeout = Math.min(timeout / 2, 15000);
                     try { page.waitForLoadState(com.microsoft.playwright.options.LoadState.NETWORKIDLE,
-                            new Page.WaitForLoadStateOptions().setTimeout(10000)); } catch (Exception ignored) {}
+                            new Page.WaitForLoadStateOptions().setTimeout(idleTimeout)); } catch (Exception ignored) {}
                     Object raw = page.evaluate(EXTRACT_ELEMENTS_SCRIPT);
                     if (!(raw instanceof List)) return List.of();
                     List<Map<String, Object>> elements = (List<Map<String, Object>>) raw;
@@ -752,7 +864,6 @@ public class PlaywrightService {
                     String fileName = UUID.randomUUID() + ".png";
                     Path screenshotPath = screenshotDir.resolve(fileName);
                     page.screenshot(new Page.ScreenshotOptions().setPath(screenshotPath).setFullPage(false));
-
                     result.put("status", "success");
                     result.put("screenshotUrl", "/api/browser/screenshots/file/" + fileName);
                 }
@@ -866,6 +977,44 @@ public class PlaywrightService {
         return cls.substring(cls.lastIndexOf('.') + 1)
                 + "#" + f.getMethodName()
                 + ":" + f.getLineNumber();
+    }
+
+    /**
+     * 스크린샷 촬영 헬퍼.
+     * - 촬영 전 페이지 안정화 대기 (DOMCONTENTLOADED)
+     * - fullPage=true 가 실패하면 viewport 전용으로 재시도
+     * - 페이지가 detached/closed 상태면 빈 Optional 반환
+     */
+    private java.util.Optional<Path> safeScreenshot(Page page, Path screenshotDir, boolean fullPage) {
+        if (page == null || page.isClosed()) return java.util.Optional.empty();
+        try {
+            // 페이지 안정화 대기 (최대 3초)
+            try { page.waitForLoadState(com.microsoft.playwright.options.LoadState.DOMCONTENTLOADED,
+                    new Page.WaitForLoadStateOptions().setTimeout(3000)); } catch (Exception ignored) {}
+            String fileName = UUID.randomUUID() + ".png";
+            Path screenshotPath = screenshotDir.resolve(fileName);
+            try {
+                page.screenshot(new Page.ScreenshotOptions().setPath(screenshotPath).setFullPage(fullPage));
+            } catch (Exception e1) {
+                if (fullPage) {
+                    // fullPage 실패 → viewport 전용으로 폴백
+                    try {
+                        page.screenshot(new Page.ScreenshotOptions().setPath(screenshotPath).setFullPage(false));
+                        log.warn("[Screenshot] fullPage 실패, viewport 전용으로 대체 | {}", e1.getMessage());
+                    } catch (Exception e2) {
+                        log.warn("[Screenshot] viewport 전용도 실패 | {}", e2.getMessage());
+                        return java.util.Optional.empty();
+                    }
+                } else {
+                    log.warn("[Screenshot] 스크린샷 실패 | {}", e1.getMessage());
+                    return java.util.Optional.empty();
+                }
+            }
+            return java.util.Optional.of(screenshotPath);
+        } catch (Exception e) {
+            log.warn("[Screenshot] 스크린샷 헬퍼 오류 | {}", e.getMessage());
+            return java.util.Optional.empty();
+        }
     }
 
     private void writeSidecar(Path screenshotDir, String fileName, Long scenarioId, String scenarioName, int stepOrder, String selector, String status) {
@@ -999,6 +1148,8 @@ public class PlaywrightService {
                                 case "click" -> {
                                     // 클릭 전에 팝업 감지 준비
                                     Page popupPage = null;
+                                    // clickAction 내부 실패를 Runnable 밖으로 전달하기 위한 홀더
+                                    final RuntimeException[] clickError = {null};
                                     try {
                                         Runnable clickAction = () -> {
                                             try {
@@ -1007,11 +1158,41 @@ public class PlaywrightService {
                                                 try {
                                                     locator.click(new Locator.ClickOptions().setTimeout(8000).setForce(true));
                                                 } catch (Exception forceEx) {
-                                                    log.warn("force click 실패, JS click 시도 | selector: {}", step.getSelector());
-                                                    activePage[0].evaluate(
-                                                        "sel => { const el = document.querySelector(sel); if (el) el.click(); else throw new Error('element not found: ' + sel); }",
-                                                        step.getSelector()
-                                                    );
+                                                    final String jsSelector = step.getSelector();
+                                                    log.warn("force click 실패, JS click 시도 | selector: {}", jsSelector);
+
+                                                    // ── 요소 존재 여부 먼저 확인 ──
+                                                    boolean elementExists = false;
+                                                    try {
+                                                        Object exists = activePage[0].evaluate(
+                                                            "sel => !!document.querySelector(sel)", jsSelector);
+                                                        elementExists = Boolean.TRUE.equals(exists);
+                                                    } catch (Exception ignored) {}
+
+                                                    if (!elementExists) {
+                                                        // 요소 자체가 없으면 실패로 기록하고 종료
+                                                        clickError[0] = new RuntimeException(
+                                                            "요소를 찾을 수 없음 (모든 방법 실패): " + jsSelector);
+                                                        return;
+                                                    }
+
+                                                    // 요소가 있으면 JS click 실행
+                                                    // JS click 은 Playwright 네비게이션 감지를 우회하므로,
+                                                    // 클릭 후 waitForNavigation 패턴으로 페이지 이동을 명시적으로 대기
+                                                    try {
+                                                        activePage[0].waitForNavigation(
+                                                            new Page.WaitForNavigationOptions()
+                                                                .setTimeout(5000)
+                                                                .setWaitUntil(WaitUntilState.DOMCONTENTLOADED),
+                                                            () -> activePage[0].evaluate(
+                                                                "sel => { const el = document.querySelector(sel); if (el) el.click(); }",
+                                                                jsSelector
+                                                            )
+                                                        );
+                                                    } catch (Exception navEx) {
+                                                        // 네비게이션 없이 클릭만 발생한 경우 → 정상
+                                                        log.debug("JS click 후 네비게이션 미발생 (정상) | selector: {}", jsSelector);
+                                                    }
                                                 }
                                             }
                                         };
@@ -1024,6 +1205,11 @@ public class PlaywrightService {
                                         popupPage = null;
                                     }
 
+                                    // clickAction 내부에서 요소를 못 찾았으면 여기서 예외 발생 → 단계 실패 처리
+                                    if (clickError[0] != null) {
+                                        throw clickError[0];
+                                    }
+
                                     if (popupPage != null) {
                                         // 팝업 페이지가 열렸으면 로드 대기 후 전환
                                         try {
@@ -1033,6 +1219,18 @@ public class PlaywrightService {
                                         log.info("{}[Step {}/{}] 팝업 창 감지 → 팝업으로 전환 | URL: {}",
                                                 scenarioLabel, i + 1, steps.size(), popupPage.url());
                                         activePage[0] = popupPage;
+                                    } else {
+                                        // 동일 탭 내 페이지 이동이 발생했을 수 있으므로 로드 완료 대기
+                                        try {
+                                            activePage[0].waitForLoadState(
+                                                com.microsoft.playwright.options.LoadState.DOMCONTENTLOADED,
+                                                new Page.WaitForLoadStateOptions().setTimeout(10000));
+                                        } catch (Exception ignored) {}
+                                        try {
+                                            activePage[0].waitForLoadState(
+                                                com.microsoft.playwright.options.LoadState.NETWORKIDLE,
+                                                new Page.WaitForLoadStateOptions().setTimeout(8000));
+                                        } catch (Exception ignored) {}
                                     }
                                 }
                                 case "fill" -> {
@@ -1082,33 +1280,40 @@ public class PlaywrightService {
                             if (waitMs > 0) activePage[0].waitForTimeout(waitMs);
 
                             // 단계별 스크린샷
-                            String fileName = UUID.randomUUID() + ".png";
-                            Path screenshotPath = screenshotDir.resolve(fileName);
-                            activePage[0].screenshot(new Page.ScreenshotOptions().setPath(screenshotPath).setFullPage(fullPageScreenshot));
-                            writeSidecar(screenshotDir, fileName, scenarioId, scenarioName,
-                                    step.getOrder() != null ? step.getOrder() : i + 1,
-                                    step.getSelector(), "success");
+                            java.util.Optional<Path> ssOpt = safeScreenshot(activePage[0], screenshotDir, fullPageScreenshot);
+                            if (ssOpt.isPresent()) {
+                                String fileName = ssOpt.get().getFileName().toString();
+                                writeSidecar(screenshotDir, fileName, scenarioId, scenarioName,
+                                        step.getOrder() != null ? step.getOrder() : i + 1,
+                                        step.getSelector(), "success");
+                                stepResult.put("screenshotUrl", "/api/browser/screenshots/file/" + fileName);
 
-                            stepResult.put("status", "success");
-                            stepResult.put("currentUrl", activePage[0].url());
-                            stepResult.put("screenshotUrl", "/api/browser/screenshots/file/" + fileName);
-
-                            log.info("{}[Step {}/{}] ✅ 성공 | {} {} | URL: {}",
-                                    scenarioLabel, i + 1, steps.size(),
-                                    step.getInteractionType(), step.getSelector(), activePage[0].url());
-
-                            // 진행률 이벤트 (성공)
-                            {
+                                // 진행률 이벤트 (성공)
+                                {
+                                    Map<String, Object> ev = new LinkedHashMap<>();
+                                    ev.put("type",          "step-result");
+                                    ev.put("stepIndex",     i);
+                                    ev.put("step",          i + 1);
+                                    ev.put("totalSteps",    steps.size());
+                                    ev.put("status",        "success");
+                                    ev.put("screenshotUrl", "/api/browser/screenshots/file/" + fileName);
+                                    ev.put("currentUrl",    activePage[0].isClosed() ? "" : activePage[0].url());
+                                    progress.accept(ev);
+                                }
+                            } else {
+                                // 진행률 이벤트 (스크린샷 없이 성공)
                                 Map<String, Object> ev = new LinkedHashMap<>();
-                                ev.put("type",          "step-result");
-                                ev.put("stepIndex",     i);
-                                ev.put("step",          i + 1);
-                                ev.put("totalSteps",    steps.size());
-                                ev.put("status",        "success");
-                                ev.put("screenshotUrl", "/api/browser/screenshots/file/" + fileName);
-                                ev.put("currentUrl",    activePage[0].url());
+                                ev.put("type",       "step-result");
+                                ev.put("stepIndex",  i);
+                                ev.put("step",       i + 1);
+                                ev.put("totalSteps", steps.size());
+                                ev.put("status",     "success");
+                                ev.put("currentUrl", activePage[0].isClosed() ? "" : activePage[0].url());
                                 progress.accept(ev);
                             }
+
+                            stepResult.put("status", "success");
+                            stepResult.put("currentUrl", activePage[0].isClosed() ? "" : activePage[0].url());
 
                         } catch (Exception e) {
                             String errorType = classifyError(e);
@@ -1134,15 +1339,14 @@ public class PlaywrightService {
                                     label, location, shortMsg);
 
                             // 실패해도 스크린샷 남기기
-                            try {
-                                String fileName = UUID.randomUUID() + ".png";
-                                Path screenshotPath = screenshotDir.resolve(fileName);
-                                activePage[0].screenshot(new Page.ScreenshotOptions().setPath(screenshotPath).setFullPage(fullPageScreenshot));
-                                writeSidecar(screenshotDir, fileName, scenarioId, scenarioName,
-                                        step.getOrder() != null ? step.getOrder() : i + 1,
-                                        step.getSelector(), "error");
-                                stepResult.put("screenshotUrl", "/api/browser/screenshots/file/" + fileName);
-                            } catch (Exception ignored) {}
+                            final int stepOrderForErr = step.getOrder() != null ? step.getOrder() : i + 1;
+                            java.util.Optional<Path> errSsOpt = safeScreenshot(activePage[0], screenshotDir, fullPageScreenshot);
+                            errSsOpt.ifPresent(p -> {
+                                String fn = p.getFileName().toString();
+                                writeSidecar(screenshotDir, fn, scenarioId, scenarioName,
+                                        stepOrderForErr, step.getSelector(), "error");
+                                stepResult.put("screenshotUrl", "/api/browser/screenshots/file/" + fn);
+                            });
 
                             // 진행률 이벤트 (실패)
                             {
@@ -1257,10 +1461,27 @@ public class PlaywrightService {
     }
 
     /**
+     * hover/state 등 동적으로 붙는 클래스를 제거합니다.
+     * 예: li.depth1.gnb_open:nth-of-type(3) → li.depth1:nth-of-type(3)
+     */
+    private static final java.util.regex.Pattern DYNAMIC_CLASS_PATTERN =
+        java.util.regex.Pattern.compile(
+            "\\.(?:open|gnb_open|active|is-active|hover|selected|current|focus|focused|" +
+            "show|shown|visible|expanded|collapsed|dropdown-open|menu-open|on|off|" +
+            "disabled|enabled|checked|pressed|loading|opened|closed)(?=[.:#\\[\\s>]|$)",
+            java.util.regex.Pattern.CASE_INSENSITIVE
+        );
+
+    private String stripDynamicClasses(String selector) {
+        return DYNAMIC_CLASS_PATTERN.matcher(selector).replaceAll("");
+    }
+
+    /**
      * 셀렉터로 Locator를 찾되, 실패 시 단순화된 셀렉터로 재시도합니다.
      * 1) 원본 셀렉터 (Tailwind 이스케이프 적용)
-     * 2) " > " 로 분리된 마지막 파트만
-     * 3) 첫 번째 클래스만 (예: .my-class)
+     * 2) 동적 상태 클래스(gnb_open, active, open 등) 제거 후 재시도
+     * 3) " > " 로 분리된 마지막 파트만
+     * 4) 첫 번째 클래스만 (예: .my-class)
      */
     private Locator resolveLocator(Page page, String selector) {
         String escaped = escapeTailwindSelector(selector);
@@ -1271,6 +1492,7 @@ public class PlaywrightService {
             loc.waitFor(new Locator.WaitForOptions()
                     .setState(com.microsoft.playwright.options.WaitForSelectorState.ATTACHED)
                     .setTimeout(8000));
+            log.debug("[resolveLocator] ✅ 원본 셀렉터 사용: {}", escaped);
             return loc;
         } catch (Exception ignored) {}
 
@@ -1281,23 +1503,52 @@ public class PlaywrightService {
                 loc.waitFor(new Locator.WaitForOptions()
                         .setState(com.microsoft.playwright.options.WaitForSelectorState.ATTACHED)
                         .setTimeout(5000));
+                log.debug("[resolveLocator] ✅ 이스케이프 전 원본 셀렉터 사용: {}", selector);
                 return loc;
             } catch (Exception ignored) {}
         }
 
-        // 3) 마지막 파트만 (부모 경로 제거)
+        // 3) 동적 상태 클래스 제거 후 재시도 (gnb_open, active, open 등 hover/state 클래스 제거)
+        String stripped = stripDynamicClasses(escaped);
+        if (!stripped.equals(escaped) && !stripped.isBlank()) {
+            try {
+                Locator loc = page.locator(stripped).first();
+                loc.waitFor(new Locator.WaitForOptions()
+                        .setState(com.microsoft.playwright.options.WaitForSelectorState.ATTACHED)
+                        .setTimeout(5000));
+                log.warn("[resolveLocator] ⚠️ 동적 클래스 제거 후 셀렉터 사용 (원본: {} → 변경: {})", selector, stripped);
+                return loc;
+            } catch (Exception ignored) {}
+        }
+
+        // 4) 마지막 파트만 (부모 경로 제거) + 동적 클래스 제거 병행
         if (escaped.contains(" > ")) {
             String lastPart = escaped.substring(escaped.lastIndexOf(" > ") + 3).trim();
+            // 4a) 마지막 파트 그대로
             try {
                 Locator loc = page.locator(lastPart).first();
                 loc.waitFor(new Locator.WaitForOptions()
                         .setState(com.microsoft.playwright.options.WaitForSelectorState.ATTACHED)
                         .setTimeout(5000));
+                log.warn("[resolveLocator] ⚠️ 마지막 파트만 사용 (원본: {} → 변경: {})", selector, lastPart);
                 return loc;
             } catch (Exception ignored) {}
+
+            // 4b) 마지막 파트 + 동적 클래스 제거
+            String lastPartStripped = stripDynamicClasses(lastPart);
+            if (!lastPartStripped.equals(lastPart) && !lastPartStripped.isBlank()) {
+                try {
+                    Locator loc = page.locator(lastPartStripped).first();
+                    loc.waitFor(new Locator.WaitForOptions()
+                            .setState(com.microsoft.playwright.options.WaitForSelectorState.ATTACHED)
+                            .setTimeout(5000));
+                    log.warn("[resolveLocator] ⚠️ 마지막 파트 + 동적 클래스 제거 사용 (원본: {} → 변경: {})", selector, lastPartStripped);
+                    return loc;
+                } catch (Exception ignored) {}
+            }
         }
 
-        // 4) 클래스만 추출 (예: div.foo.bar → .foo)
+        // 5) 클래스만 추출 (예: div.foo.bar → .foo)
         String classOnly = selector.replaceAll("^.*?(\\.[\\w-]+).*$", "$1");
         if (classOnly.startsWith(".") && !classOnly.equals(selector)) {
             try {
@@ -1305,11 +1556,13 @@ public class PlaywrightService {
                 loc.waitFor(new Locator.WaitForOptions()
                         .setState(com.microsoft.playwright.options.WaitForSelectorState.ATTACHED)
                         .setTimeout(5000));
+                log.warn("[resolveLocator] ⚠️ 클래스만 추출하여 사용 (원본: {} → 변경: {})", selector, classOnly);
                 return loc;
             } catch (Exception ignored) {}
         }
 
         // 모두 실패 → 원본으로 반환 (이후 단계에서 에러 처리)
+        log.warn("[resolveLocator] ❌ 모든 폴백 실패, 원본 셀렉터로 마지막 시도: {}", selector);
         return page.locator(selector).first();
     }
 
@@ -1357,6 +1610,8 @@ public class PlaywrightService {
                 .setLocale("ko-KR")
                 .setTimezoneId("Asia/Seoul")
                 .setViewportSize(w, h)
+                .setBypassCSP(true)
+                .setIgnoreHTTPSErrors(true)
                 .setExtraHTTPHeaders(java.util.Map.of(
                         "Accept-Language", "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7"
                 ));

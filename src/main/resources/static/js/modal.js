@@ -10,7 +10,8 @@ function openModal(mode) {
     modalUrlInput.value        = scanParams.url     || urlInput.value.trim();
     modalBrowserSelect.value   = scanParams.browser || browserSelect.value;
     modalTimeoutInput.value    = scanParams.timeout || timeoutInput.value || 30000;
-    modalHeadlessInput.checked = scanParams.headless !== undefined ? scanParams.headless : headlessInput.checked;
+    modalHeadlessInput.checked  = scanParams.headless !== undefined ? scanParams.headless : headlessInput.checked;
+    document.getElementById('modalFullPageInput').checked = document.getElementById('fullPageInput').checked;
 
     // 기기 프리셋 초기화
     const presetEl = document.getElementById('modalDevicePreset');
@@ -209,6 +210,10 @@ modalSaveBtn.addEventListener('click', () => {
             const h = opt.dataset.h;
             document.getElementById('modalVpWidth').value  = w || '';
             document.getElementById('modalVpHeight').value = h || '';
+        } else if (!isCustom && !presetEl.value) {
+            // 기본값: 1920×1080
+            document.getElementById('modalVpWidth').value  = 1920;
+            document.getElementById('modalVpHeight').value = 1080;
         }
     }
 
@@ -217,14 +222,21 @@ modalSaveBtn.addEventListener('click', () => {
 
 function buildViewportFromModal() {
     const presetEl = document.getElementById('modalDevicePreset');
-    if (!presetEl || !presetEl.value) return null;
+    if (!presetEl) return null;
+
+    // 기본 옵션(빈 값) → 1920×1080
+    if (!presetEl.value) {
+        return { width: 1920, height: 1080, deviceName: null, userAgent: null,
+                 deviceScaleFactor: 1, isMobile: false, hasTouch: false };
+    }
 
     const isCustom = presetEl.value === '__custom__';
     const opt = isCustom ? null : presetEl.options[presetEl.selectedIndex];
 
     const w   = isCustom ? parseInt(document.getElementById('modalVpWidth').value)  : parseInt(opt.dataset.w || '0');
     const h   = isCustom ? parseInt(document.getElementById('modalVpHeight').value) : parseInt(opt.dataset.h || '0');
-    if (!w || !h) return null;
+    if (!w || !h) return { width: 1920, height: 1080, deviceName: null, userAgent: null,
+                           deviceScaleFactor: 1, isMobile: false, hasTouch: false };
 
     return {
         width:             w,

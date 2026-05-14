@@ -763,18 +763,18 @@ public class PlaywrightService {
                 }
                 document.querySelectorAll('*').forEach(el => { if (el.shadowRoot) collectShadowElements(el.shadowRoot); });
 
-                return results;
+                return JSON.stringify(results);
             } catch(e) {
-                return [{ tag: 'error', type: '', id: '', name: '', className: '', onclickAttr: '', text: e.message, placeholder: '', interactionType: 'click', selector: '', visible: false }];
+                return JSON.stringify([{ tag: 'error', type: '', id: '', name: '', className: '', onclickAttr: '', text: e.message, placeholder: '', interactionType: 'click', selector: '', visible: false }]);
             }
         }
     """;
 
-    @SuppressWarnings("unchecked")
     public List<Map<String, Object>> scanElements(
             String url, String browserName, boolean headless, int timeout) {
         try (Playwright playwright = Playwright.create()) {
-            Browser browser = launchBrowser(playwright, browserName, headless);
+            // headless 모드에서는 자동화 차단에 걸리므로 항상 non-headless 로 실행
+            Browser browser = launchBrowser(playwright, browserName, false);
             try (browser) {
                 Browser.NewContextOptions ctxOpts = new Browser.NewContextOptions()
                         .setBypassCSP(true)
@@ -794,9 +794,33 @@ public class PlaywrightService {
                     int idleTimeout = Math.min(timeout / 2, 15000);
                     try { page.waitForLoadState(com.microsoft.playwright.options.LoadState.NETWORKIDLE,
                             new Page.WaitForLoadStateOptions().setTimeout(idleTimeout)); } catch (Exception ignored) {}
+                    // SPA 추가 안정화 대기
+                    page.waitForTimeout(2000);
+
+                    // ── 진단 로그 ─────────────────────────────────────────────
+                    try {
+                        Object totalDom    = page.evaluate("() => document.querySelectorAll('*').length");
+                        Object interactive = page.evaluate("() => document.querySelectorAll('button,input,a,select,textarea,[onclick],[role=\"button\"]').length");
+                        log.info("[scanElements] 진단 | URL={} | title={} | DOM전체={} | 인터랙티브={}",
+                                page.url(), page.title(), totalDom, interactive);
+                    } catch (Exception diagEx) {
+                        log.warn("[scanElements] 진단 스크립트 실패: {}", diagEx.getMessage());
+                    }
+
                     Object raw = page.evaluate(EXTRACT_ELEMENTS_SCRIPT);
-                    if (!(raw instanceof List)) return List.of();
-                    List<Map<String, Object>> elements = (List<Map<String, Object>>) raw;
+                    if (!(raw instanceof String jsonStr)) {
+                        log.warn("[scanElements] evaluate 결과가 String 아님: {}", raw == null ? "null" : raw.getClass().getName());
+                        return List.of();
+                    }
+                    List<Map<String, Object>> elements;
+                    try {
+                        elements = OBJECT_MAPPER.readValue(jsonStr,
+                                new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
+                    } catch (Exception parseEx) {
+                        log.warn("[scanElements] JSON 파싱 실패: {}", parseEx.getMessage());
+                        return List.of();
+                    }
+                    log.info("[scanElements] 스캔 완료 | {}건", elements.size());
                     // add index for frontend reference
                     for (int i = 0; i < elements.size(); i++) {
                         elements.get(i).put("index", i);
@@ -1586,8 +1610,8 @@ public class PlaywrightService {
                 ));
 
         return switch (browserName.toLowerCase()) {
-            case "firefox" -> playwright.firefox().launch(options);
-            case "webkit" -> playwright.webkit().launch(options);
+            case "firefox"  -> playwright.firefox().launch(options);
+            case "webkit"   -> playwright.webkit().launch(options);
             case "chromium" -> playwright.chromium().launch(options);
             default -> throw new IllegalArgumentException("지원하지 않는 브라우저입니다: " + browserName);
         };

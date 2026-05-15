@@ -426,13 +426,43 @@
             document.getElementById('main').style.display = '';
 
             // 이미 진행 중인 실행이 있으면 SSE 에 재연결
+            let isRunning = false;
             try {
                 const activeRes = await fetch('/api/browser/active-execution/' + scenarioId);
                 const activeData = await activeRes.json();
                 if (activeData.running && activeData.executionId) {
+                    isRunning = true;
                     reconnectToExecution(activeData.executionId);
                 }
             } catch(e) { /* ignore */ }
+
+            // 실행 중이 아닐 때만 마지막 저장 결과 복원
+            if (!isRunning) {
+                try {
+                    const resultRes = await fetch('/api/scenarios/result/' + scenarioId);
+                    if (resultRes.ok) {
+                        const resultData = await resultRes.json();
+                        const savedSteps = resultData.steps || [];
+                        savedSteps.forEach((sr, idx) => {
+                            if (sr && sr.status) {
+                                stepResults[idx] = {
+                                    status:        sr.status,
+                                    screenshotUrl: sr.screenshotUrl  || null,
+                                    errorMessage:  sr.errorMessage   || null
+                                };
+                            }
+                        });
+                        if (stepResults.some(r => r != null)) {
+                            renderSteps();
+                            showSummary({
+                                successCount: resultData.successCount ?? stepResults.filter(r => r && r.status === 'success').length,
+                                failCount:    resultData.failCount    ?? stepResults.filter(r => r && r.status === 'error').length
+                            });
+                        }
+                    }
+                } catch(e) { /* ignore */ }
+            }
+            
         } catch(e) { showNotFound(); }
     })();
 

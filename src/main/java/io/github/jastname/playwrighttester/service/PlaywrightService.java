@@ -7,9 +7,13 @@ import io.github.jastname.playwrighttester.controller.ScenarioRequest;
 import org.springframework.stereotype.Service;
 import io.github.jastname.playwrighttester.dto.ButtonCandidate;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -24,9 +28,11 @@ public class PlaywrightService {
 
     private static final Logger log = LoggerFactory.getLogger(PlaywrightService.class);
     private final ScreenshotProperties screenshotProperties;
+    private final ScenarioStore scenarioStore;
 
-    public PlaywrightService(ScreenshotProperties screenshotProperties) {
+    public PlaywrightService(ScreenshotProperties screenshotProperties, ScenarioStore scenarioStore) {
         this.screenshotProperties = screenshotProperties;
+        this.scenarioStore = scenarioStore;
     }
 
     // ── UI 인스펙터: 브라우저에 주입할 스크립트 ───────────────────────────────
@@ -1052,7 +1058,9 @@ public class PlaywrightService {
             meta.put("createdAt",    Instant.now().toString());
             String jsonName = fileName.replace(".png", ".json");
             OBJECT_MAPPER.writeValue(screenshotDir.resolve(jsonName).toFile(), meta);
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        	log.warn("[Sidecar] 메타데이터 저장 실패 | {}", ignored.getMessage());
+        }
     }
 
     public Map<String, Object> testScenario(
@@ -1386,7 +1394,7 @@ public class PlaywrightService {
                                 progress.accept(ev);
                             }
                         }
-
+                        
                         stepResults.add(stepResult);
                     }
                 }
@@ -1421,7 +1429,11 @@ public class PlaywrightService {
             "failCount",    steps.size() - successCount,
             "totalSteps",   steps.size()
         ));
-
+        
+        
+        log.info(scenarioResult.toString(), scenarioId);
+        writeScenarioResult(scenarioId, scenarioResult);
+        
         return scenarioResult;
     }
 
@@ -1647,6 +1659,44 @@ public class PlaywrightService {
         BrowserContext ctx = browser.newContext(ctxOptions);
         ctx.addInitScript(STEALTH_INIT_SCRIPT);
         return ctx;
+    }
+    
+    /*
+     * 시나리오 실행 결과 json 저장
+     * @param scenarioId     시나리오 ID
+     * @param scenarioResult 시나리오 실행 결과 맵
+     */
+    private void writeScenarioResult(Long scenarioId, Map<String, Object> scenarioResult) {
+        String jsonName = scenarioId.toString() + ".json";
+        Path scenarioDir = scenarioStore.getSavePath().getParent();
+
+        if (scenarioDir == null) {
+            log.warn("[ScenarioResult] 저장 디렉토리 확인 불가 | scenarioId={}", scenarioId);
+            return;
+        }
+
+        Path targetFile = scenarioDir.resolve(jsonName);
+
+        try {
+            if (Files.exists(targetFile)) {
+                Files.delete(targetFile);
+                log.info("[ScenarioResult] 기존 결과 파일 삭제 후 재작성 | path={}", targetFile);
+            }
+        } catch (AccessDeniedException e) {
+            log.error("[ScenarioResult] 파일 삭제 권한 없음 | path={} | {}", targetFile, e.getMessage());
+            return;
+        } catch (IOException e) {
+            log.error("[ScenarioResult] 기존 파일 삭제 실패 | path={} | {}", targetFile, e.getMessage());
+            return;
+        }
+
+        try {
+            OBJECT_MAPPER.writeValue(targetFile.toFile(), scenarioResult);
+        } catch (JsonProcessingException e) {
+            log.error("[ScenarioResult] 결과 직렬화(JSON 변환) 실패 | scenarioId={} | {}", scenarioId, e.getMessage());
+        } catch (IOException e) {
+            log.error("[ScenarioResult] 결과 파일 쓰기 실패 | path={} | {}", targetFile, e.getMessage());
+        }
     }
 
 }

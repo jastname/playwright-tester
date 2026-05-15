@@ -82,6 +82,16 @@ public class ScenarioController {
     @DeleteMapping("/{id}")
     public Map<String, Object> deleteById(@PathVariable("id") long id) {
         boolean deleted = scenarioStore.deleteById(id);
+        scenarioStore.deleteScenarioResultById(id);
         return Map.of("ok", deleted);
     }
+    
+    /** ID로 시나리오 결과 조회 */
+    @GetMapping(value = "/result/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> getResultById(@PathVariable("id") long id) {
+        String json = scenarioStore.loadResultById(id);
+        if (json == null) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(json);
+    }
+    
 }

@@ -124,6 +124,9 @@ function renderInspectorList() {
             renderInspectorList();
         });
         inspectorPickedList.appendChild(item);
+        // 스크롤을 맨 아래로 이동
+        inspectorPickedList.scrollTop = inspectorPickedList.scrollHeight;
+        
     });
 }
 
@@ -132,7 +135,7 @@ inspectorClearBtn.addEventListener('click', () => {
     renderInspectorList();
 });
 
-fillSampleButton.addEventListener('click', () => {
+/*fillSampleButton.addEventListener('click', () => {
     urlInput.value = 'https://landsoft.co.kr/';
     setStatus('샘플 URL을 입력했습니다.', 'success');
-});
+});*/

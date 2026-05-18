@@ -1,6 +1,62 @@
-/**
- * 목록 페이지가 로드/복귀될 때 이미 진행 중인 실행이 있으면 SSE 에 재연결합니다.
- */
+// 전체 실행 진행 중 여부 (개별 버튼 잠금에 사용)
+let isRunningAll = false;
+
+// 시나리오 전체 실행
+async function runAllScenarios() {
+    if (!scenarios.length || isRunningAll) return;
+
+    isRunningAll = true;
+
+    // 모든 개별 실행/삭제 버튼 비활성화
+    scenarioList.querySelectorAll('.run-btn, .delete-btn').forEach(btn => btn.disabled = true);
+
+    runAllScenariosBtn.disabled = true;
+    runAllScenariosBtn.textContent = '전체 실행 중...';
+    runAllSummary.style.display = '';
+    runAllSummary.innerHTML = `<span style="color:#888;">⏳ 0 / ${scenarios.length}개 시나리오 실행 중...</span>`;
+
+    let totalSuccess = 0;
+    let totalFail = 0;
+    let errorCount = 0;
+
+    try {
+        for (let i = 0; i < scenarios.length; i++) {
+            const sc = scenarios[i];
+            runAllSummary.innerHTML = `
+                <span style="color:#555;">⏳ ${i + 1} / ${scenarios.length}개 실행 중...
+                <strong>${escapeHtml(sc.name)}</strong></span>`;
+
+            const result = await runScenario(sc.id);
+            totalSuccess += result?.successCount ?? 0;
+            totalFail    += result?.failCount    ?? 0;
+            if (result?.error) errorCount++;
+        }
+
+        const allOk = totalFail === 0 && errorCount === 0;
+        runAllSummary.innerHTML = `
+            <span style="font-weight:bold; color:${allOk ? '#2e7d32' : '#c62828'};">
+                ${allOk ? '✅' : '❌'} 전체 ${scenarios.length}개 시나리오 완료
+                &nbsp;—&nbsp; 성공 단계: ${totalSuccess}
+                ${totalFail > 0 ? ` &nbsp;/&nbsp; ❌ 실패 단계: ${totalFail}` : ''}
+                ${errorCount > 0 ? ` &nbsp;/&nbsp; 오류 시나리오: ${errorCount}개` : ''}
+            </span>`;
+    } finally {
+        isRunningAll = false;
+        // 모든 개별 실행/삭제 버튼 복원
+        scenarioList.querySelectorAll('.run-btn').forEach(btn => {
+            btn.disabled = false;
+            btn.textContent = '실행';
+        });
+        scenarioList.querySelectorAll('.delete-btn').forEach(btn => btn.disabled = false);
+        runAllScenariosBtn.disabled = false;
+        runAllScenariosBtn.textContent = '▶ 전체 실행';
+    }
+}
+
+// 전체 실행 버튼 이벤트
+if (runAllScenariosBtn) {
+    runAllScenariosBtn.addEventListener('click', runAllScenarios);
+}
 async function checkAndResumeActiveExecutions() {
     try {
         const res = await fetch('/api/browser/active-executions');
@@ -135,13 +191,15 @@ function renderScenarioList() {
 
 async function runScenario(id) {
     const sc = scenarios.find(s => s.id === id);
-    if (!sc) return;
+    if (!sc) return { successCount: 0, failCount: 0 };
 
     const runBtn = scenarioList.querySelector(`.run-btn[data-id="${id}"]`);
     const resultArea = document.getElementById(`result-${id}`);
 
     runBtn.disabled = true;
     runBtn.textContent = '실행 중...';
+
+    let scenarioResult = { successCount: 0, failCount: 0 };
 
     // 진행 바 초기 렌더링
     resultArea.innerHTML = `
@@ -250,6 +308,7 @@ async function runScenario(id) {
             es.addEventListener('scenario-complete', e => {
                 const d = JSON.parse(e.data);
                 const hasErr = d.failCount > 0;
+                scenarioResult = { successCount: d.successCount, failCount: d.failCount };
                 updateProgress(d.totalSteps,
                     `완료 — ✅ 성공 ${d.successCount}단계${hasErr ? ` / ❌ 실패 ${d.failCount}단계` : ''}`);
                 const bar = document.getElementById(`prog-bar-${id}`);
@@ -269,10 +328,15 @@ async function runScenario(id) {
         });
 
     } catch(e) {
+        scenarioResult = { successCount: 0, failCount: 1, error: e.message };
         const lbl = document.getElementById(`prog-label-${id}`);
         if (lbl) lbl.textContent = '오류: ' + e.message;
     } finally {
-        runBtn.disabled = false;
-        runBtn.textContent = '실행';
+        // 전체 실행 중에는 runAllScenarios 가 일괄 복원하므로 개별 복원 생략
+        if (!isRunningAll) {
+            runBtn.disabled = false;
+            runBtn.textContent = '실행';
+        }
     }
+    return scenarioResult;
 }

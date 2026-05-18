@@ -74,7 +74,11 @@
         <!-- Scenario list -->
         <div id="scenarioSection" style="display:none;">
             <hr style="margin: 36px 0 24px; border:none; border-top:1px solid #e8e8e8;">
-            <h2>📋 저장된 시나리오</h2>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h2 style="margin:0;">📋 저장된 시나리오</h2>
+                <button id="runAllScenariosBtn" type="button" class="btn-accent" style="margin-right: 20px;">▶ 전체 실행</button>
+            </div>
+            <div id="runAllSummary" style="display:none; margin-bottom:12px; padding:10px 14px; border-radius:8px; background:#f8f9fa; border:1px solid #e2e2e2; font-size:14px;"></div>
             <div id="scenarioList" class="scenario-list"></div>
         </div>
     </div>

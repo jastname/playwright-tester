@@ -39,7 +39,6 @@ function closeModal() {
 
 modalCloseBtn.addEventListener('click', closeModal);
 modalCancelBtn.addEventListener('click', closeModal);
-scenarioModal.addEventListener('click', e => { if (e.target === scenarioModal) closeModal(); });
 
 function renderModalTable() {
     modalTableBody.innerHTML = '';
@@ -163,16 +162,35 @@ modalSaveBtn.addEventListener('click', () => {
     });
 
     const baseOrder = hasScan ? Math.max(...scanSteps.map(s => s.order)) : 0;
-    const inspSteps = inspectorPicked.map((el, i) => ({
-        order:           baseOrder + i + 1,
-        selector:        el.selector,
-        interactionType: el.interactionType,
-        tag:             el.tag,
-        idName:          (el.id ? '#'+el.id : '') || el.name || '-',
-        labelText:       (el.text || el.placeholder || '').substring(0, 30),
-        fillText:        el.interactionType === 'select' ? (el.selectedValue || el.fillText || null) : (el.fillText || null),
-        waitMs:          500
-    }));
+    const inspSteps = inspectorPicked.map((el, i) => {
+        const isDialog = ['alert', 'confirm', 'prompt'].includes(el.type);
+        if (isDialog) {
+            // dialog 캡처 → interactionType으로 구분, selector 없음
+            return {
+                order:           baseOrder + i + 1,
+                selector:        '',
+                interactionType: el.type,           // 'alert' | 'confirm' | 'prompt'
+                tag:             'dialog',
+                idName:          el.type,
+                labelText:       (el.message || '').substring(0, 30),
+                fillText:        null,
+                waitMs:          0,
+                message:         el.message  || '',
+                dialogResult:    el.result   ?? null,
+                dialogInput:     el.input    ?? null
+            };
+        }
+        return {
+            order:           baseOrder + i + 1,
+            selector:        el.selector,
+            interactionType: el.interactionType,
+            tag:             el.tag,
+            idName:          (el.id ? '#'+el.id : '') || el.name || '-',
+            labelText:       (el.text || el.placeholder || '').substring(0, 30),
+            fillText:        el.interactionType === 'select' ? (el.selectedValue || el.fillText || null) : (el.fillText || null),
+            waitMs:          500
+        };
+    });
 
     const steps = [...scanSteps, ...inspSteps];
 

@@ -388,7 +388,10 @@
             .replaceAll('>','&gt;').replaceAll('"','&quot;')
             .replaceAll("'",'&#039;');
     }
-    const badgeCls = { click:'badge-click', fill:'badge-fill', select:'badge-select' };
+    const badgeCls = {
+        click:'badge-click', fill:'badge-fill', select:'badge-select',
+        alert:'badge-dialog', confirm:'badge-dialog', prompt:'badge-dialog'
+    };
 
     // ── 라이트박스 ────────────────────────────────────────────────────
     const ssLightbox = document.getElementById('ssLightbox');
@@ -521,13 +524,30 @@
             const canRun = runningIdx < 0;
             const btnLabel = '▶';
 
+            const isDialogStep = ['alert', 'confirm', 'prompt'].includes(s.interactionType);
+            const dlgLabels = { alert: '알림', confirm: '확인요청', prompt: '입력요청' };
+            // dialog 스텝이면 selector 대신 message, fillText 대신 dialogResult/dialogInput 표시
+            const selectorCell = isDialogStep
+                ? `<span style="color:#aaa;font-size:12px;">(다이얼로그)</span>`
+                : `<div class="selector-cell" title="${escapeHtml(s.selector||'')}">${escapeHtml(s.selector||'')}</div>`;
+            const fillCell = isDialogStep
+                ? (s.dialogResult != null
+                    ? `<span style="font-size:12px;color:#888;">${s.dialogResult ? '확인' : '취소'}</span>`
+                    : s.dialogInput != null
+                    ? `<span style="font-size:12px;color:#888;">${escapeHtml(String(s.dialogInput).substring(0,30))}</span>`
+                    : '<span style="color:#bbb;">—</span>')
+                : (s.fillText ? escapeHtml(s.fillText) : '<span style="color:#bbb;">—</span>');
+            const labelCell = isDialogStep
+                ? `<b>${escapeHtml((s.message||s.labelText||'-').substring(0,40))}</b>`
+                : `<b>${escapeHtml(s.labelText || s.idName || '-')}</b>`;
+
             tr.innerHTML = `
                 <td><div class="step-num ${numCls}">${s.order}</div></td>
-                <td><b>${escapeHtml(s.labelText || s.idName || '-')}</b></td>
+                <td>${labelCell}</td>
                 <td><span class="badge ${badgeCls[s.interactionType]||''}">${escapeHtml(s.interactionType)}</span></td>
-                <td style="font-size:12px;color:#666;">${s.fillText ? escapeHtml(s.fillText) : '<span style="color:#bbb;">—</span>'}</td>
-                <td><div class="selector-cell" title="${escapeHtml(s.selector)}">${escapeHtml(s.selector)}</div></td>
-                <td><button class="step-run-btn" data-idx="${i}" ${canRun ? '' : 'disabled'}>${btnLabel}</button></td>
+                <td style="font-size:12px;color:#666;">${fillCell}</td>
+                <td>${selectorCell}</td>
+                <td><button class="step-run-btn" data-idx="${i}" ${!canRun ? 'disabled' : ''}>${btnLabel}</button></td>
                 <td class="step-status-cell">${statusHtml}</td>
                 <td class="step-thumb-cell">${thumbHtml}</td>
                 <td class="step-err-cell">${errHtml}</td>
@@ -666,7 +686,8 @@
         try {
             const stepsToRun = scenario.steps.slice(0, targetIdx + 1).map(s =>
                 ({ selector: s.selector, interactionType: s.interactionType,
-                   fillText: s.fillText, waitMs: s.waitMs, order: s.order })
+                   fillText: s.fillText, waitMs: s.waitMs, order: s.order,
+                   message: s.message, dialogResult: s.dialogResult, dialogInput: s.dialogInput })
             );
             const startRes = await fetch('/api/browser/test-scenario-async', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -738,8 +759,8 @@
         scenario.steps.forEach((_, i) => setRowPending(i));
 
         try {
-            const apiSteps = scenario.steps.map(({ selector, interactionType, fillText, waitMs, order }) =>
-                ({ selector, interactionType, fillText, waitMs, order }));
+            const apiSteps = scenario.steps.map(({ selector, interactionType, fillText, waitMs, order, message, dialogResult, dialogInput }) =>
+                ({ selector, interactionType, fillText, waitMs, order, message, dialogResult, dialogInput }));
 
             const startRes = await fetch('/api/browser/test-scenario-async', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },

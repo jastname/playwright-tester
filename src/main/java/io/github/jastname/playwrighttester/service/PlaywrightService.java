@@ -239,6 +239,55 @@ public class PlaywrightService {
             })();
 
             document.addEventListener('keydown', function(e) { if (e.key === 'Escape') toggle(); }, true);
+            
+            // ── alert / confirm / prompt 감지 ───────────────────────────
+			(function () {
+			  const originalAlert = window.alert;
+			  const originalConfirm = window.confirm;
+			  const originalPrompt = window.prompt;
+			
+			  window.alert = function (message) {
+			    const info = {
+			      type: 'alert',
+			      message: String(message),
+			      result: true,
+			      pageUrl: location.href,
+			      timestamp: Date.now()
+			    };
+			    queueInfo(info);
+			    return originalAlert.call(window, message);
+			  };
+			
+			  window.confirm = function (message) {
+			    const result = originalConfirm.call(window, message);
+			    const info = {
+			      type: 'confirm',
+			      message: String(message),
+			      result: result,
+			      pageUrl: location.href,
+			      timestamp: Date.now()
+			    };
+			    try { sessionStorage.setItem('__last_confirm', JSON.stringify(info)); } catch (e) {}
+			    queueInfo(info);
+			    return result;
+			  };
+			
+			  window.prompt = function (message, defaultValue) {
+			    const result = originalPrompt.call(window, message, defaultValue);
+			    const info = {
+			      type: 'prompt',
+			      message: String(message),
+			      input: result,
+			      cancelled: result === null,
+			      pageUrl: location.href,
+			      timestamp: Date.now()
+			    };
+			    try { sessionStorage.setItem('__last_prompt', JSON.stringify(info)); } catch (e) {}
+			    queueInfo(info);
+			    return result;
+			  };
+			})();
+            
 
             // ── 마우스 이동: 하이라이팅 ───────────────────────────
             document.addEventListener('mousemove', function(e) {
@@ -463,6 +512,15 @@ public class PlaywrightService {
                         log.warn("[Inspector] exposeFunction 콜백 처리 오류", cbEx);
                     }
                     return null;
+                });
+
+                // ── 인스펙터 모드: dialog를 accept/dismiss하지 않으면 네이티브 UI가 표시됨 ──
+                // Playwright는 핸들러가 없으면 자동 dismiss 한다.
+                // 빈 핸들러를 등록해두면 dismiss 없이 브라우저에 네이티브 alert/confirm/prompt가 뜬다.
+                ctx.onDialog(dialog -> {
+                    log.info("[Inspector] 다이얼로그 감지 (네이티브 표시): type={}, message={}",
+                            dialog.type(), dialog.message());
+                    // accept/dismiss 를 호출하지 않음 → 브라우저에 네이티브 다이얼로그가 표시됨
                 });
 
                 // ── 매 페이지 로드마다 인스펙터 스크립트 주입 ──
@@ -1134,6 +1192,57 @@ public class PlaywrightService {
                             viewport.getDeviceName() != null ? " (" + viewport.getDeviceName() + ")" : "");
                 }
                 try (BrowserContext ctx = browser.newContext(ctxOptions)) {
+
+                    // 현재 실행 중인 스텝 인덱스 추적 (onDialog 에서 다음 dialog 스텝 참조용)
+                    final java.util.concurrent.atomic.AtomicInteger currentStepIdx =
+                            new java.util.concurrent.atomic.AtomicInteger(-1);
+
+                    // ── 시나리오 실행 중 다이얼로그 처리 (dialogResult/dialogInput 반영) ──
+                    ctx.onDialog(dialog -> {
+                        String dlgType = dialog.type();
+                        String dlgMsg  = dialog.message();
+
+                        // 다음 스텝이 dialog 스텝이면 그 스텝의 dialogResult/dialogInput 사용
+                        boolean shouldAccept = true;
+                        String  promptInput  = null;
+                        int nextIdx = currentStepIdx.get() + 1;
+                        if (nextIdx < steps.size()) {
+                            ScenarioRequest.ScenarioStep nextStep = steps.get(nextIdx);
+                            boolean nextIsDialog = "alert".equals(nextStep.getInteractionType())
+                                    || "confirm".equals(nextStep.getInteractionType())
+                                    || "prompt".equals(nextStep.getInteractionType());
+                            if (nextIsDialog) {
+                                // confirm: dialogResult == false 이면 dismiss
+                                if ("confirm".equals(dlgType) || "beforeunload".equals(dlgType)) {
+                                    shouldAccept = nextStep.getDialogResult() == null
+                                            || Boolean.TRUE.equals(nextStep.getDialogResult());
+                                }
+                                // prompt: dialogInput 값으로 accept
+                                if ("prompt".equals(dlgType)) {
+                                    promptInput = nextStep.getDialogInput();
+                                }
+                            }
+                        }
+
+                        log.info("[Scenario] 다이얼로그 처리: type={}, accept={}, message={}",
+                                dlgType, shouldAccept, dlgMsg);
+                        try {
+                            if (!shouldAccept) {
+                                dialog.dismiss();
+                            } else if (promptInput != null) {
+                                dialog.accept(promptInput);
+                            } else {
+                                dialog.accept();
+                            }
+                        } catch (Exception ignored) {}
+
+                        Map<String, Object> dlgEv = new LinkedHashMap<>();
+                        dlgEv.put("type",       "dialog");
+                        dlgEv.put("dialogType", dlgType);
+                        dlgEv.put("message",    dlgMsg);
+                        progress.accept(dlgEv);
+                    });
+
                     Page page = ctx.newPage();
                     page.setDefaultTimeout(timeout);
                     page.navigate(url, new Page.NavigateOptions().setWaitUntil(WaitUntilState.LOAD));
@@ -1150,6 +1259,7 @@ public class PlaywrightService {
                     final Page[] activePage = {page};
 
                     for (int i = 0; i < steps.size(); i++) {
+                        currentStepIdx.set(i);  // onDialog 핸들러가 다음 스텝 참조에 사용
                         ScenarioRequest.ScenarioStep step = steps.get(i);
                         Map<String, Object> stepResult = new LinkedHashMap<>();
                         stepResult.put("step", i + 1);
@@ -1164,9 +1274,46 @@ public class PlaywrightService {
                                 "stepIndex", i,
                                 "step", i + 1,
                                 "totalSteps", steps.size(),
-                                "selector", step.getSelector(),
+                                "selector", step.getSelector() != null ? step.getSelector() : "",
                                 "interactionType", step.getInteractionType()
                             ));
+
+                            // ── dialog 타입은 onDialog 핸들러가 자동 처리 → 스크린샷 촬영 후 pass-through ──
+                            final boolean isDialogStep = "alert".equals(step.getInteractionType())
+                                    || "confirm".equals(step.getInteractionType())
+                                    || "prompt".equals(step.getInteractionType());
+                            if (isDialogStep) {
+                                int dlgWaitMs = step.getWaitMs() != null ? step.getWaitMs() : 500;
+                                if (dlgWaitMs > 0) activePage[0].waitForTimeout(dlgWaitMs);
+
+                                stepResult.put("status", "success");
+                                stepResult.put("currentUrl", activePage[0].isClosed() ? "" : activePage[0].url());
+                                log.info("[Scenario] dialog 스텝 pass-through (스크린샷 촬영): type={}, message={}",
+                                        step.getInteractionType(), step.getMessage());
+
+                                // 다이얼로그 자동 수락 후 페이지 상태 스크린샷
+                                Map<String, Object> evDlg = new LinkedHashMap<>();
+                                evDlg.put("type",       "step-result");
+                                evDlg.put("stepIndex",  i);
+                                evDlg.put("step",       i + 1);
+                                evDlg.put("totalSteps", steps.size());
+                                evDlg.put("status",     "success");
+                                evDlg.put("currentUrl", activePage[0].isClosed() ? "" : activePage[0].url());
+
+                                java.util.Optional<Path> dlgSs = safeScreenshot(activePage[0], screenshotDir, fullPageScreenshot);
+                                if (dlgSs.isPresent()) {
+                                    String dlgFn = dlgSs.get().getFileName().toString();
+                                    writeSidecar(screenshotDir, dlgFn, scenarioId, scenarioName,
+                                            step.getOrder() != null ? step.getOrder() : i + 1,
+                                            step.getSelector() != null ? step.getSelector() : "dialog", "success");
+                                    stepResult.put("screenshotUrl", "/api/browser/screenshots/file/" + dlgFn);
+                                    evDlg.put("screenshotUrl", "/api/browser/screenshots/file/" + dlgFn);
+                                }
+
+                                progress.accept(evDlg);
+                                stepResults.add(stepResult);
+                                continue;
+                            }
 
                             // 셀렉터 후보: 원본 → 마지막 파트만 → 클래스만
                             Locator locator = resolveLocator(activePage[0], step.getSelector());
@@ -1175,6 +1322,24 @@ public class PlaywrightService {
                             try { locator.scrollIntoViewIfNeeded(
                                     new Locator.ScrollIntoViewIfNeededOptions().setTimeout(3000)); }
                             catch (Exception ignored) {}
+
+                            // 다음 스텝이 다이얼로그이면 클릭 전에 미리 스크린샷 촬영
+                            // (클릭 스텝 = "버튼 클릭 전 화면", 다이얼로그 스텝 = "다이얼로그 처리 후 화면")
+                            String preActionScreenshotUrl = null;
+                            boolean nextStepIsDialog = (i + 1 < steps.size()) && (
+                                    "alert".equals(steps.get(i + 1).getInteractionType()) ||
+                                    "confirm".equals(steps.get(i + 1).getInteractionType()) ||
+                                    "prompt".equals(steps.get(i + 1).getInteractionType()));
+                            if ("click".equals(step.getInteractionType()) && nextStepIsDialog) {
+                                java.util.Optional<Path> preSs = safeScreenshot(activePage[0], screenshotDir, fullPageScreenshot);
+                                if (preSs.isPresent()) {
+                                    String preFn = preSs.get().getFileName().toString();
+                                    writeSidecar(screenshotDir, preFn, scenarioId, scenarioName,
+                                            step.getOrder() != null ? step.getOrder() : i + 1,
+                                            step.getSelector(), "success");
+                                    preActionScreenshotUrl = "/api/browser/screenshots/file/" + preFn;
+                                }
+                            }
 
                             switch (step.getInteractionType()) {
                                 case "click" -> {
@@ -1312,6 +1477,19 @@ public class PlaywrightService {
                             if (waitMs > 0) activePage[0].waitForTimeout(waitMs);
 
                             // 단계별 스크린샷
+                            // 클릭 전에 미리 찍은 스크린샷이 있으면 그것을 사용 (다이얼로그 시나리오)
+                            if (preActionScreenshotUrl != null) {
+                                stepResult.put("screenshotUrl", preActionScreenshotUrl);
+                                Map<String, Object> ev = new LinkedHashMap<>();
+                                ev.put("type",          "step-result");
+                                ev.put("stepIndex",     i);
+                                ev.put("step",          i + 1);
+                                ev.put("totalSteps",    steps.size());
+                                ev.put("status",        "success");
+                                ev.put("screenshotUrl", preActionScreenshotUrl);
+                                ev.put("currentUrl",    activePage[0].isClosed() ? "" : activePage[0].url());
+                                progress.accept(ev);
+                            } else {
                             java.util.Optional<Path> ssOpt = safeScreenshot(activePage[0], screenshotDir, fullPageScreenshot);
                             if (ssOpt.isPresent()) {
                                 String fileName = ssOpt.get().getFileName().toString();
@@ -1343,6 +1521,7 @@ public class PlaywrightService {
                                 ev.put("currentUrl", activePage[0].isClosed() ? "" : activePage[0].url());
                                 progress.accept(ev);
                             }
+                            } // end else (preActionScreenshotUrl == null)
 
                             stepResult.put("status", "success");
                             stepResult.put("currentUrl", activePage[0].isClosed() ? "" : activePage[0].url());
@@ -1613,6 +1792,21 @@ public class PlaywrightService {
     """;
 
     private Browser launchBrowser(Playwright playwright, String browserName, boolean headless) {
+        String name = browserName.toLowerCase();
+
+        // Firefox: Chromium 전용 플래그를 전달하면 automationcontrolled 창이 별도로 열리는 문제가 발생하므로
+        // Firefox 전용 prefs로 자동화 표시 창을 억제
+        if (name.equals("firefox")) {
+            java.util.Map<String, Object> prefs = new java.util.LinkedHashMap<>();
+            prefs.put("dom.webdriver.enabled", false);
+            prefs.put("useAutomationExtension", false);
+            BrowserType.LaunchOptions options = new BrowserType.LaunchOptions()
+                    .setHeadless(headless)
+                    .setFirefoxUserPrefs(prefs);
+            return playwright.firefox().launch(options);
+        }
+
+        // Chromium / WebKit: Chromium 전용 플래그 적용
         BrowserType.LaunchOptions options = new BrowserType.LaunchOptions()
                 .setHeadless(headless)
                 .setArgs(java.util.List.of(
@@ -1621,8 +1815,7 @@ public class PlaywrightService {
                         "--disable-dev-shm-usage"
                 ));
 
-        return switch (browserName.toLowerCase()) {
-            case "firefox"  -> playwright.firefox().launch(options);
+        return switch (name) {
             case "webkit"   -> playwright.webkit().launch(options);
             case "chromium" -> playwright.chromium().launch(options);
             default -> throw new IllegalArgumentException("지원하지 않는 브라우저입니다: " + browserName);

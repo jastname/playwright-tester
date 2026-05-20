@@ -170,7 +170,6 @@ function renderScenarioList() {
                 <span>타임아웃 :${sc.timeout}ms</span>
                 <span>${sc.steps.length}단계</span>
             </div>
-
             <div class="scenario-result-area" id="result-${sc.id}"></div>
         `;
         scenarioList.appendChild(card);
@@ -256,8 +255,8 @@ async function runScenario(id) {
     }
 
     try {
-        const apiSteps = sc.steps.map(({ selector, interactionType, fillText, waitMs, order }) =>
-            ({ selector, interactionType, fillText, waitMs, order }));
+        const apiSteps = sc.steps.map(({ selector, interactionType, fillText, waitMs, order, message, dialogResult, dialogInput }) =>
+            ({ selector, interactionType, fillText, waitMs, order, message, dialogResult, dialogInput }));
 
         const startRes = await fetch('/api/browser/test-scenario-async', {
             method: 'POST',

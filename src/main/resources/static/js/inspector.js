@@ -97,6 +97,36 @@ function renderInspectorList() {
     while (inspectorPickedList.children.length > 1) inspectorPickedList.removeChild(inspectorPickedList.lastChild);
     inspectorPicked.forEach((el, idx) => {
         const item = document.createElement('div');
+
+        // ── 다이얼로그 캡처 (alert / confirm / prompt) ──────────────────
+        const isDialog = ['alert', 'confirm', 'prompt'].includes(el.type);
+        if (isDialog) {
+            item.className = 'inspector-item is-dialog';
+            const labels  = { alert: '알림', confirm: '확인요청', prompt: '입력요청' };
+            const dlgLabel = labels[el.type] || el.type;
+            const msgPreview = escapeHtml((el.message || '').substring(0, 60));
+            const resultInfo = el.type === 'confirm'
+                ? `<span style="font-size:11px;color:#888;flex-shrink:0;">(${el.result ? '확인 클릭' : '취소 클릭'})</span>`
+                : el.type === 'prompt' && el.input != null
+                ? `<span style="font-size:11px;color:#888;flex-shrink:0;">입력: ${escapeHtml(String(el.input).substring(0, 20))}</span>`
+                : '';
+            item.innerHTML = `
+                <span class="inspector-item-order">${idx + 1}</span>
+                <span class="badge badge-dialog">${dlgLabel}</span>
+                <span class="inspector-item-label" title="${escapeHtml(el.message || '')}">${msgPreview}</span>
+                ${resultInfo}
+                <span class="inspector-item-del" title="삭제">x</span>
+            `;
+            item.querySelector('.inspector-item-del').addEventListener('click', () => {
+                inspectorPicked.splice(idx, 1);
+                renderInspectorList();
+            });
+            inspectorPickedList.appendChild(item);
+            inspectorPickedList.scrollTop = inspectorPickedList.scrollHeight;
+            return;
+        }
+
+        // ── 일반 요소 ────────────────────────────────────────────────────
         item.className = 'inspector-item';
         const label = (el.text || el.placeholder || el.selector || '').substring(0, 40);
         const isFill   = el.interactionType === 'fill';
@@ -126,7 +156,6 @@ function renderInspectorList() {
         inspectorPickedList.appendChild(item);
         // 스크롤을 맨 아래로 이동
         inspectorPickedList.scrollTop = inspectorPickedList.scrollHeight;
-        
     });
 }
 

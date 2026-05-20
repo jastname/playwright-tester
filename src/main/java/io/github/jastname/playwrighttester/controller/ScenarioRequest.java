@@ -68,11 +68,11 @@ public class ScenarioRequest {
     @Getter
     @Setter
     public static class ScenarioStep {
-        @NotBlank
+        // dialog 타입은 selector가 없으므로 nullable
         private String selector;
 
         @NotBlank
-        @Pattern(regexp = "click|fill|select")
+        @Pattern(regexp = "click|fill|select|alert|confirm|prompt")
         private String interactionType;
 
         private String fillText;
@@ -82,5 +82,10 @@ public class ScenarioRequest {
 
         // 실제 단계 순서 (스크린샷 메타 저장용, optional)
         private Integer order;
+
+        // dialog 캡처 전용 필드 (alert/confirm/prompt 타입에만 사용)
+        private String message;
+        private Boolean dialogResult;  // confirm 결과
+        private String  dialogInput;   // prompt 입력값
     }
 }

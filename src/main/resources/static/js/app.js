@@ -26,7 +26,10 @@ function setStatus(msg, type) {
     statusMessage.className = 'status' + (type ? ' ' + type : '');
 }
 
-var badgeCls = { click: 'badge-click', fill: 'badge-fill', select: 'badge-select' };
+var badgeCls = {
+    click: 'badge-click', fill: 'badge-fill', select: 'badge-select',
+    alert: 'badge-dialog', confirm: 'badge-dialog', prompt: 'badge-dialog'
+};
 
 // DOM refs
 var urlInput = document.getElementById('urlInput');

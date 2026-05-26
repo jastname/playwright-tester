@@ -1,6 +1,7 @@
 package io.github.jastname.playwrighttester.controller;
 
 import io.github.jastname.playwrighttester.service.ScenarioStore;
+import io.github.jastname.playwrighttester.service.PasswordCryptoService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +21,7 @@ import java.util.Map;
 public class ScenarioController {
 
     private final ScenarioStore scenarioStore;
+    private final PasswordCryptoService passwordCryptoService;
 
     /** 저장된 시나리오 목록 반환 (JSON 파일 내용을 그대로 응답) */
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
@@ -63,7 +65,8 @@ public class ScenarioController {
     /** 전체 목록을 파일에 저장 (요청 body를 그대로 파일에 기록) */
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public Map<String, Object> save(@RequestBody String body) {
-        scenarioStore.saveRaw(body);
+        String encrypted = passwordCryptoService.encryptPasswordsInJson(body);
+        scenarioStore.saveRaw(encrypted);
         return Map.of(
             "ok", true,
             "path", scenarioStore.getSavePath().toString()
@@ -73,7 +76,8 @@ public class ScenarioController {
     /** ID로 시나리오 수정 */
     @PutMapping(value = "/{id}", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> updateById(@PathVariable("id") long id, @RequestBody String body) {
-        boolean updated = scenarioStore.updateById(id, body);
+        String encrypted = passwordCryptoService.encryptPasswordsInScenarioJson(body);
+        boolean updated = scenarioStore.updateById(id, encrypted);
         if (!updated) return ResponseEntity.notFound().build();
         return ResponseEntity.ok(Map.of("ok", true));
     }
@@ -93,5 +97,17 @@ public class ScenarioController {
         if (json == null) return ResponseEntity.notFound().build();
         return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(json);
     }
-    
+
+    /**
+     * 저장된 전체 시나리오의 password 필드를 일괄 암호화합니다.
+     * 이미 암호화된 값은 건너뜁니다.
+     * POST /api/scenarios/migrate-encrypt
+     */
+    @PostMapping("/migrate-encrypt")
+    public Map<String, Object> migrateEncrypt() {
+        String original = scenarioStore.loadRaw();
+        String encrypted = passwordCryptoService.encryptPasswordsInJson(original);
+        scenarioStore.saveRaw(encrypted);
+        return Map.of("ok", true, "message", "패스워드 필드 일괄 암호화 완료");
+    }
 }

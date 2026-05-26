@@ -9,6 +9,7 @@ import jakarta.annotation.PostConstruct;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -29,12 +30,23 @@ public class ScenarioStore {
     private final AppSettingsStore appSettingsStore;
     private final ObjectMapper mapper = new ObjectMapper();
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
+    /** 패스워드 암호화 서비스 (순환 참조 방지를 위해 setter 주입) */
+    private PasswordCryptoService passwordCryptoService;
 
     private volatile Path savePath = DEFAULT_SAVE_PATH;
     private volatile ArrayNode cache = null;
 
     public ScenarioStore(AppSettingsStore appSettingsStore) {
         this.appSettingsStore = appSettingsStore;
+    }
+
+    public void setPasswordCryptoService(PasswordCryptoService passwordCryptoService) {
+        this.passwordCryptoService = passwordCryptoService;
+    }
+
+    @Autowired
+    public void injectPasswordCryptoService(PasswordCryptoService passwordCryptoService) {
+        this.passwordCryptoService = passwordCryptoService;
     }
 
     @PostConstruct
@@ -47,6 +59,31 @@ public class ScenarioStore {
             cache = mapper.createArrayNode();
         }
         warmCache();
+        migrateEncryptPasswords();
+    }
+
+    /**
+     * 기존 scenarios.json 의 패스워드 필드를 암호화합니다.
+     * PasswordCryptoService 가 주입된 경우에만 실행됩니다.
+     */
+    private void migrateEncryptPasswords() {
+        if (passwordCryptoService == null) return;
+        lock.writeLock().lock();
+        try {
+            if (cache == null) return;
+            String original = cache.toString();
+            String encrypted = passwordCryptoService.encryptPasswordsInJson(original);
+            if (!original.equals(encrypted)) {
+                Files.writeString(savePath, encrypted);
+                JsonNode node = mapper.readTree(encrypted);
+                cache = node.isArray() ? (ArrayNode) node : mapper.createArrayNode();
+                log.info("[ScenarioStore] 패스워드 필드 자동 암호화 마이그레이션 완료");
+            }
+        } catch (Exception e) {
+            log.error("[ScenarioStore] 패스워드 마이그레이션 오류: {}", e.getMessage());
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     private void loadSavedPath() {

@@ -107,7 +107,7 @@
         .edit-steps-table td { padding: 8px 12px; border-bottom: 1px solid #eee; vertical-align: middle; }
         .edit-steps-table tr:hover td { background: #f9f9ff; }
 
-        .edit-input-sm { width: 100%; padding: 5px 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 12px; }
+        .edit-input-sm { width: 100%; padding: 5px 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 12px; box-sizing: border-box; }
         .edit-input-sm:focus { outline: none; border-color: #1a5fd1; }
 
         .step-del-btn {
@@ -137,11 +137,36 @@
             animation: spin 0.7s linear infinite;
             flex-shrink: 0;
         }
+        
+        .scenario-copy {
+            display: inline-flex; align-items: center; gap: 6px;
+            text-decoration: none; color: #2e7d32; font-weight: bold;
+            font-size: 14px; margin-bottom: 20px;
+            padding: 6px 14px; border: 1px solid #a5d6a7; border-radius: 8px;
+            background: #e8f5e9; cursor: pointer;
+        }
+        .scenario-copy:hover { background: #c8e6c9; }
     </style>
 </head>
 <body>
 <div class="container">
-    <a class="back-link" href="/">← 목록으로 돌아가기</a>
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+        <a class="back-link" href="/" >← 목록으로 돌아가기</a>
+        <button class="scenario-copy" id="scenarioCopyBtn">📋 시나리오 복사하기</button>
+    </div>
+    <!-- ── 시나리오 복사 모달 ── -->
+    <div id="copyModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:3000; justify-content:center; align-items:center;">
+        <div style="background:#fff; border-radius:16px; width:440px; max-width:94vw; box-shadow:0 12px 48px rgba(0,0,0,0.22); padding:28px 28px 22px;">
+            <div style="font-size:17px; font-weight:bold; margin-bottom:18px;">📋 시나리오 복사</div>
+            <label style="font-size:13px; color:#555; display:block; margin-bottom:6px;">복사본 이름</label>
+            <input id="copyNameInput" type="text" style="width:100%; padding:8px 12px; border:1px solid #ccc; border-radius:8px; font-size:14px; box-sizing:border-box;" />
+            <div id="copyErrorMsg" style="display:none; color:#c62828; font-size:12px; margin-top:6px;"></div>
+            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+                <button id="copyModalCancelBtn" type="button" style="padding:8px 20px; border:1px solid #ccc; background:#000000; border-radius:8px; font-size:14px; cursor:pointer;">취소</button>
+                <button id="copyModalConfirmBtn" type="button" style="padding:8px 20px; border:none; background:#2e7d32; color:#fff; border-radius:8px; font-size:14px; font-weight:bold; cursor:pointer;">복사</button>
+            </div>
+        </div>
+    </div>
 
     <div id="notFound" style="display:none; text-align:center; padding:60px 0; color:#aaa;">
         <div style="font-size:48px; margin-bottom:16px;">🔍</div>
@@ -530,13 +555,18 @@
             const selectorCell = isDialogStep
                 ? `<span style="color:#aaa;font-size:12px;">(다이얼로그)</span>`
                 : `<div class="selector-cell" title="${escapeHtml(s.selector||'')}">${escapeHtml(s.selector||'')}</div>`;
+            const isPasswordField = s.inputType === 'password' || (s.fillText && s.fillText.startsWith('ENC('));
             const fillCell = isDialogStep
                 ? (s.dialogResult != null
                     ? `<span style="font-size:12px;color:#888;">${s.dialogResult ? '확인' : '취소'}</span>`
                     : s.dialogInput != null
                     ? `<span style="font-size:12px;color:#888;">${escapeHtml(String(s.dialogInput).substring(0,30))}</span>`
                     : '<span style="color:#bbb;">—</span>')
-                : (s.fillText ? escapeHtml(s.fillText) : '<span style="color:#bbb;">—</span>');
+                : (s.fillText
+                    ? (isPasswordField
+                        ? `<span style="font-size:13px;letter-spacing:2px;color:#888;" title="암호화된 패스워드">••••••</span>`
+                        : escapeHtml(s.fillText))
+                    : '<span style="color:#bbb;">—</span>');
             const labelCell = isDialogStep
                 ? `<b>${escapeHtml((s.message||s.labelText||'-').substring(0,40))}</b>`
                 : `<b>${escapeHtml(s.labelText || s.idName || '-')}</b>`;
@@ -1053,6 +1083,13 @@
         const tbody = document.getElementById('editStepsBody');
         tbody.innerHTML = '';
         editSteps.forEach((s, i) => {
+            const isPwd = s.inputType === 'password' || (s.fillText && s.fillText.startsWith('ENC('));
+            const originalEnc = (isPwd && s.fillText) ? s.fillText : '';   // ENC(...) 원본 보관
+            // password 필드는 빈 입력으로 표시 (ENC 값은 data-enc 에 보관)
+            const fillDisplayVal = isPwd ? '' : escapeHtml(s.fillText || '');
+            const fillInputType  = isPwd ? 'password' : 'text';
+            const fillPlaceholder = isPwd ? '새 패스워드' : '입력값';
+
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td style="text-align:center; font-weight:bold; color:#666;">${i + 1}</td>
@@ -1065,13 +1102,28 @@
                     </select>
                 </td>
                 <td><input class="edit-input-sm" data-field="selector" value="${escapeHtml(s.selector || '')}" placeholder="CSS 셀렉터" /></td>
-                <td><input class="edit-input-sm" data-field="fillText" value="${escapeHtml(s.fillText || '')}" placeholder="입력값" /></td>
+                <td>
+                    <input class="edit-input-sm" data-field="fillText"
+                        type="${fillInputType}"
+                        value="${fillDisplayVal}"
+                        placeholder="${fillPlaceholder}"
+                        data-enc="${escapeHtml(originalEnc)}"
+                        autocomplete="new-password" />
+                </td>
                 <td><input class="edit-input-sm" data-field="waitMs" type="number" min="0" step="100" value="${s.waitMs ?? 500}" style="width:70px;" /></td>
                 <td><button class="step-del-btn" data-idx="${i}">삭제</button></td>
             `;
             // 필드 변경 동기화
             tr.querySelectorAll('[data-field]').forEach(el => {
-                const sync = () => { editSteps[i][el.dataset.field] = el.type === 'number' ? Number(el.value) : el.value; };
+                const sync = () => {
+                    if (el.dataset.field === 'fillText') {
+                        // password 필드: 비어있으면 원본 ENC 값 유지, 새로 입력하면 그 값 사용
+                        const typed = el.value;
+                        editSteps[i].fillText = typed.trim() !== '' ? typed : (el.dataset.enc || null);
+                    } else {
+                        editSteps[i][el.dataset.field] = el.type === 'number' ? Number(el.value) : el.value;
+                    }
+                };
                 el.addEventListener('input', sync);
                 el.addEventListener('change', sync);
             });
@@ -1176,6 +1228,81 @@
             isMobile:          isCustom ? false : (opt.dataset.mobile === '1'),
             hasTouch:          isCustom ? false : (opt.dataset.touch  === '1')
         };
+    }
+
+    // ── 시나리오 복사 ─────────────────────────────────────────────────
+    const copyModal        = document.getElementById('copyModal');
+    const copyNameInput    = document.getElementById('copyNameInput');
+    const copyErrorMsg     = document.getElementById('copyErrorMsg');
+
+    document.getElementById('scenarioCopyBtn').addEventListener('click', () => {
+        if (!scenario) return;
+        copyNameInput.value = scenario.name + '_복사본';
+        copyErrorMsg.style.display = 'none';
+        copyModal.style.display = 'flex';
+        setTimeout(() => { copyNameInput.focus(); copyNameInput.select(); }, 50);
+    });
+
+    document.getElementById('copyModalCancelBtn').addEventListener('click', () => {
+        copyModal.style.display = 'none';
+    });
+    copyModal.addEventListener('click', e => {
+        if (e.target === copyModal) copyModal.style.display = 'none';
+    });
+
+    document.getElementById('copyModalConfirmBtn').addEventListener('click', doScenarioCopy);
+    copyNameInput.addEventListener('keydown', e => { if (e.key === 'Enter') doScenarioCopy(); });
+
+    async function doScenarioCopy() {
+        const name = copyNameInput.value.trim();
+        if (!name) {
+            copyErrorMsg.textContent = '이름을 입력해주세요.';
+            copyErrorMsg.style.display = '';
+            copyNameInput.focus();
+            return;
+        }
+        const btn = document.getElementById('copyModalConfirmBtn');
+        btn.disabled = true;
+        btn.textContent = '⏳ 복사 중...';
+        copyErrorMsg.style.display = 'none';
+        try {
+            // 전체 목록 조회
+            const listRes = await fetch('/api/scenarios');
+            if (!listRes.ok) throw new Error('목록 조회 실패');
+            const allScenarios = await listRes.json();
+
+            // 새 ID 생성 (타임스탬프 기반, 중복 회피)
+            let newId = Date.now();
+            while (allScenarios.some(s => s.id === newId)) newId++;
+
+            // 새 시나리오 구성
+            const copied = {
+                ...scenario,
+                id:    newId,
+                name:  name,
+                steps: scenario.steps.map(s => ({ ...s }))
+            };
+
+            // 목록에 추가 후 전체 저장
+            const updated = [...allScenarios, copied];
+            const saveRes = await fetch('/api/scenarios', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updated)
+            });
+            if (!saveRes.ok) throw new Error('저장 실패 ' + saveRes.status);
+
+            copyModal.style.display = 'none';
+            if (confirm(`"${name}" 시나리오가 생성되었습니다.\n해당 시나리오로 이동하시겠습니까?`)) {
+                location.href = '/scenario.html?id=' + newId;
+            }
+        } catch(e) {
+            copyErrorMsg.textContent = '복사 실패: ' + e.message;
+            copyErrorMsg.style.display = '';
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '복사 생성';
+        }
     }
 </script>
 </body>

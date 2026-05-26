@@ -62,30 +62,34 @@ public class BrowserTestController {
         this.progressStore = progressStore;
         this.sUrl = "http://localhost:" + serverProperties.getPort() + "/";
     		
-		System.out.println("Copyright ALL LANDSOFT, Co. Ltd");
-         
-         try {
-            String[] cmd = null;
-           try {
-              // 실행 커맨드 명령어 취득
-              cmd = getUrlCmd(sUrl);
-           } catch (Exception e1) {
-              e1.printStackTrace();
-              return;
-           }
+        
+        try {
+        	String[] cmd = null;
+        	try {
+        		//실행 커맨드 명령어 취득
+        		cmd = getUrlCmd(sUrl);
+        	} catch (Exception e1) {
+        		e1.printStackTrace();
+        		return;
+        	}
 
-           if (cmd == null) {
-              System.out.println("실행할 커맨드가 없습니다.");
-           } else {
+        	if (cmd == null) {
+        		System.out.println("실행할 커맨드가 없습니다.");
+        	} else {
               // 커맨드 실행
-              
-                 executeCmd(cmd);
-                 LOGGER.info("브라우저 실행 =>" + sUrl);
-           }
-
-         }catch (Exception e) {
-            LOGGER.error("브라우저 로딩 오류");
-         }
+        		executeCmd(cmd);
+                LOGGER.info("브라우저 실행 =>" + sUrl);
+        	}
+        }catch (Exception e) {
+        	LOGGER.error("브라우저 로딩 오류");
+        }
+         
+        System.out.println("  _        _    _   _   ____     ____    ___   _____  _____  ");
+ 		System.out.println(" | |      / \\  | \\ | | |  _ \\   / ___|  / _ \\ |  ___||_   _| ");
+ 		System.out.println(" | |     / _ \\ |  \\| | | | | |  \\___ \\ | | | || |_     | |   ");
+ 		System.out.println(" | |___ / ___ \\| |\\  | | |_| |   ___) || |_| ||  _|    | |   ");
+ 		System.out.println(" |_____/_/   \\_\\_| \\_| |____/   |____/  \\___/ |_|      |_|   ");
+ 		System.out.println("Copyright ALL LANDSOFT, Co. Ltd");
     }
 
     

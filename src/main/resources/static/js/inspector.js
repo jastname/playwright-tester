@@ -35,7 +35,6 @@ inspectorStartBtn.addEventListener('click', async () => {
             const msg = data.errorMessage || data.error || '브라우저 실행 실패';
             throw new Error(msg);
         }
-
         inspectorSessionId = data.sessionId;
         inspectorStatusBadge.textContent = '활성 - 요소를 클릭하세요';
         inspectorStopBtn.disabled = false;
@@ -102,7 +101,9 @@ function renderInspectorList() {
         const isDialog = ['alert', 'confirm', 'prompt'].includes(el.type);
         if (isDialog) {
             item.className = 'inspector-item is-dialog';
+            const icons   = { alert: '⚠️', confirm: '❓', prompt: '✏️' };
             const labels  = { alert: '알림', confirm: '확인요청', prompt: '입력요청' };
+            const icon    = icons[el.type]  || '💬';
             const dlgLabel = labels[el.type] || el.type;
             const msgPreview = escapeHtml((el.message || '').substring(0, 60));
             const resultInfo = el.type === 'confirm'
@@ -112,7 +113,7 @@ function renderInspectorList() {
                 : '';
             item.innerHTML = `
                 <span class="inspector-item-order">${idx + 1}</span>
-                <span class="badge badge-dialog">${dlgLabel}</span>
+                <span class="badge badge-dialog">${icon} ${dlgLabel}</span>
                 <span class="inspector-item-label" title="${escapeHtml(el.message || '')}">${msgPreview}</span>
                 ${resultInfo}
                 <span class="inspector-item-del" title="삭제">x</span>
@@ -140,7 +141,7 @@ function renderInspectorList() {
             <span class="badge ${badgeCls[el.interactionType]||''}" style="font-size:11px;">${escapeHtml(el.interactionType||'')}</span>
             <span class="inspector-item-label" title="${escapeHtml(el.selector||'')}">${escapeHtml(label)}</span>
             <span class="inspector-item-sel">${escapeHtml((el.selector||'').substring(0,30))}</span>
-            ${isFill   ? `<input type="text" class="inspector-fill-input" placeholder="입력값" value="${escapeHtml(el.fillText||'')}" />` : ''}
+            ${isFill ? `<input type="text" class="inspector-fill-input" placeholder="입력값" value="${escapeHtml(el.fillText||'')}" />` : ''}
             ${isSelect ? `<span class="inspector-select-value" style="font-size:12px;color:#1a5fd1;padding:0 6px;">${selectDisplay}</span>` : ''}
             <span class="inspector-item-del" title="삭제">x</span>
         `;

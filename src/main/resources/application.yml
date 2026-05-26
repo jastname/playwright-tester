@@ -6,6 +6,9 @@ app:
   login:
     username: 
     password: 
+    session-timeout: 10800
+  crypto:
+    secret-key: ${APP_CRYPTO_SECRET_KEY:}
     
 server:
   port: ${SERVER_PORT:8888}
@@ -17,5 +20,5 @@ playwright:
 
 screenshot:
   cleanup:
-    enabled: true      # 자동 정리 활성화 여부
+    enabled: false      # 자동 정리 활성화 여부
     retain-days: 7     # N일 이상 된 파일 삭제

@@ -157,6 +157,7 @@ modalSaveBtn.addEventListener('click', () => {
             idName:          (el.id ? '#'+el.id : '') || el.name || '-',
             labelText:       (el.text || el.placeholder || '').substring(0, 30),
             fillText:        fi ? (fi.value.trim() || null) : null,
+            inputType:       el.type || null,
             waitMs:          500
         };
     });
@@ -188,6 +189,7 @@ modalSaveBtn.addEventListener('click', () => {
             idName:          (el.id ? '#'+el.id : '') || el.name || '-',
             labelText:       (el.text || el.placeholder || '').substring(0, 30),
             fillText:        el.interactionType === 'select' ? (el.selectedValue || el.fillText || null) : (el.fillText || null),
+            inputType:       el.type || null,
             waitMs:          500
         };
     });

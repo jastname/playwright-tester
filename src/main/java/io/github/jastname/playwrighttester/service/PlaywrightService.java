@@ -29,10 +29,14 @@ public class PlaywrightService {
     private static final Logger log = LoggerFactory.getLogger(PlaywrightService.class);
     private final ScreenshotProperties screenshotProperties;
     private final ScenarioStore scenarioStore;
+    private final PasswordCryptoService passwordCryptoService;
 
-    public PlaywrightService(ScreenshotProperties screenshotProperties, ScenarioStore scenarioStore) {
-        this.screenshotProperties = screenshotProperties;
-        this.scenarioStore = scenarioStore;
+    public PlaywrightService(ScreenshotProperties screenshotProperties,
+                             ScenarioStore scenarioStore,
+                             PasswordCryptoService passwordCryptoService) {
+        this.screenshotProperties    = screenshotProperties;
+        this.scenarioStore           = scenarioStore;
+        this.passwordCryptoService   = passwordCryptoService;
     }
 
     // ── UI 인스펙터: 브라우저에 주입할 스크립트 ───────────────────────────────
@@ -502,11 +506,12 @@ public class PlaywrightService {
                             Map<String, Object> info = OBJECT_MAPPER.readValue(jsonStr,
                                     new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
                             info.put("capturedAt", System.currentTimeMillis());
+                            // password 타입 요소는 text 값을 마스킹하여 노출 방지
+                            if ("password".equalsIgnoreCase(String.valueOf(info.getOrDefault("type", "")))) {
+                                info.put("text", "");
+                                info.put("placeholder", "••••••");
+                            }
                             session.elements.add(info);
-							/*
-							 * log.info("[Inspector] ✅ 직접 캡처 성공: selector={}, text={}",
-							 * info.get("selector"), info.get("text"));
-							 */
                         }
                     } catch (Exception cbEx) {
                         log.warn("[Inspector] exposeFunction 콜백 처리 오류", cbEx);
@@ -600,6 +605,11 @@ public class PlaywrightService {
                    			        if (k != null) info.put(String.valueOf(k), v);
                    			    });
                   			    info.put("capturedAt", System.currentTimeMillis());
+                  			    // password 타입 요소는 text 값을 마스킹하여 노출 방지
+                  			    if ("password".equalsIgnoreCase(String.valueOf(info.getOrDefault("type", "")))) {
+                  			        info.put("text", "");
+                  			        info.put("placeholder", "••••••");
+                  			    }
                   			    session.elements.add(info);
                   			}
                         } catch (Exception e) {
@@ -923,6 +933,10 @@ public class PlaywrightService {
                         case "click" -> locator.click(new Locator.ClickOptions().setTimeout(5000));
                         case "fill" -> {
                             String text = (fillText != null && !fillText.isBlank()) ? fillText : "playwright테스트";
+                            // ENC(...) 형식이면 복호화
+                            if (passwordCryptoService.isEncrypted(text)) {
+                                text = passwordCryptoService.decrypt(text);
+                            }
                             try {
                                 locator.fill(text, new Locator.FillOptions().setTimeout(5000));
                             } catch (Exception fillEx) {
@@ -1433,6 +1447,10 @@ public class PlaywrightService {
                                 case "fill" -> {
                                     String text = (step.getFillText() != null && !step.getFillText().isBlank())
                                             ? step.getFillText() : "playwright테스트";
+                                    // ENC(...) 형식이면 복호화
+                                    if (passwordCryptoService.isEncrypted(text)) {
+                                        text = passwordCryptoService.decrypt(text);
+                                    }
                                     try {
                                         locator.fill(text, new Locator.FillOptions().setTimeout(8000));
                                     } catch (Exception fillEx) {

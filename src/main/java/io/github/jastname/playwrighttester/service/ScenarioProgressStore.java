@@ -128,7 +128,7 @@ public class ScenarioProgressStore {
                 }
             }
         }
-
+        
         /**
          * 스트림을 정상 종료합니다.
          */

@@ -77,6 +77,13 @@ public class ScenarioRequest {
 
         private String fillText;
 
+        /**
+         * HTML input 의 type 속성값 (예: "password", "text", "email" …).
+         * 인스펙터에서 캡처 시 자동 설정됩니다.
+         * "password" 이면 fillText 가 AES-256-GCM 으로 저장됩니다.
+         */
+        private String inputType;
+
         // 각 액션 후 대기 (ms), 기본 0
         private Integer waitMs;
 

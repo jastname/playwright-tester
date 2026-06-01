@@ -90,6 +90,7 @@ public class BrowserTestController {
  		System.out.println(" | |___ / ___ \\| |\\  | | |_| |   ___) || |_| ||  _|    | |   ");
  		System.out.println(" |_____/_/   \\_\\_| \\_| |____/   |____/  \\___/ |_|      |_|   ");
  		System.out.println("Copyright ALL LANDSOFT, Co. Ltd");
+ 		System.out.println("");
     }
 
     

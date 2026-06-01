@@ -1088,12 +1088,22 @@ public class PlaywrightService {
      * - 페이지가 detached/closed 상태면 빈 Optional 반환
      */
     private java.util.Optional<Path> safeScreenshot(Page page, Path screenshotDir, boolean fullPage) {
+        return safeScreenshot(page, screenshotDir, fullPage, null);
+    }
+
+    /**
+     * 스크린샷 촬영 헬퍼 (고정 파일명 지원).
+     * @param fixedFileName null 이면 UUID로 생성, 값이 있으면 해당 이름으로 저장(덮어쓰기)
+     */
+    private java.util.Optional<Path> safeScreenshot(Page page, Path screenshotDir, boolean fullPage, String fixedFileName) {
         if (page == null || page.isClosed()) return java.util.Optional.empty();
         try {
             // 페이지 안정화 대기 (최대 3초)
             try { page.waitForLoadState(com.microsoft.playwright.options.LoadState.DOMCONTENTLOADED,
                     new Page.WaitForLoadStateOptions().setTimeout(3000)); } catch (Exception ignored) {}
-            String fileName = UUID.randomUUID() + ".png";
+            String fileName = (fixedFileName != null && !fixedFileName.isBlank())
+                    ? fixedFileName
+                    : UUID.randomUUID() + ".png";
             Path screenshotPath = screenshotDir.resolve(fileName);
             try {
                 page.screenshot(new Page.ScreenshotOptions().setPath(screenshotPath).setFullPage(fullPage));
@@ -1275,6 +1285,11 @@ public class PlaywrightService {
                     for (int i = 0; i < steps.size(); i++) {
                         currentStepIdx.set(i);  // onDialog 핸들러가 다음 스텝 참조에 사용
                         ScenarioRequest.ScenarioStep step = steps.get(i);
+                        int stepOrderVal = step.getOrder() != null ? step.getOrder() : i + 1;
+                        // 시나리오 실행마다 덮어쓸 고정 파일명: {scenarioId}_{stepOrder}.png
+                        String fixedScreenshotName = (scenarioId != null)
+                                ? scenarioId + "_" + stepOrderVal + ".png"
+                                : null;
                         Map<String, Object> stepResult = new LinkedHashMap<>();
                         stepResult.put("step", i + 1);
                         stepResult.put("selector", step.getSelector());
@@ -1314,11 +1329,11 @@ public class PlaywrightService {
                                 evDlg.put("status",     "success");
                                 evDlg.put("currentUrl", activePage[0].isClosed() ? "" : activePage[0].url());
 
-                                java.util.Optional<Path> dlgSs = safeScreenshot(activePage[0], screenshotDir, fullPageScreenshot);
+                                java.util.Optional<Path> dlgSs = safeScreenshot(activePage[0], screenshotDir, fullPageScreenshot, fixedScreenshotName);
                                 if (dlgSs.isPresent()) {
                                     String dlgFn = dlgSs.get().getFileName().toString();
                                     writeSidecar(screenshotDir, dlgFn, scenarioId, scenarioName,
-                                            step.getOrder() != null ? step.getOrder() : i + 1,
+                                            stepOrderVal,
                                             step.getSelector() != null ? step.getSelector() : "dialog", "success");
                                     stepResult.put("screenshotUrl", "/api/browser/screenshots/file/" + dlgFn);
                                     evDlg.put("screenshotUrl", "/api/browser/screenshots/file/" + dlgFn);
@@ -1345,11 +1360,11 @@ public class PlaywrightService {
                                     "confirm".equals(steps.get(i + 1).getInteractionType()) ||
                                     "prompt".equals(steps.get(i + 1).getInteractionType()));
                             if ("click".equals(step.getInteractionType()) && nextStepIsDialog) {
-                                java.util.Optional<Path> preSs = safeScreenshot(activePage[0], screenshotDir, fullPageScreenshot);
+                                java.util.Optional<Path> preSs = safeScreenshot(activePage[0], screenshotDir, fullPageScreenshot, fixedScreenshotName);
                                 if (preSs.isPresent()) {
                                     String preFn = preSs.get().getFileName().toString();
                                     writeSidecar(screenshotDir, preFn, scenarioId, scenarioName,
-                                            step.getOrder() != null ? step.getOrder() : i + 1,
+                                            stepOrderVal,
                                             step.getSelector(), "success");
                                     preActionScreenshotUrl = "/api/browser/screenshots/file/" + preFn;
                                 }
@@ -1508,11 +1523,11 @@ public class PlaywrightService {
                                 ev.put("currentUrl",    activePage[0].isClosed() ? "" : activePage[0].url());
                                 progress.accept(ev);
                             } else {
-                            java.util.Optional<Path> ssOpt = safeScreenshot(activePage[0], screenshotDir, fullPageScreenshot);
+                            java.util.Optional<Path> ssOpt = safeScreenshot(activePage[0], screenshotDir, fullPageScreenshot, fixedScreenshotName);
                             if (ssOpt.isPresent()) {
                                 String fileName = ssOpt.get().getFileName().toString();
                                 writeSidecar(screenshotDir, fileName, scenarioId, scenarioName,
-                                        step.getOrder() != null ? step.getOrder() : i + 1,
+                                        stepOrderVal,
                                         step.getSelector(), "success");
                                 stepResult.put("screenshotUrl", "/api/browser/screenshots/file/" + fileName);
 
@@ -1568,8 +1583,8 @@ public class PlaywrightService {
                                     label, location, shortMsg);
 
                             // 실패해도 스크린샷 남기기
-                            final int stepOrderForErr = step.getOrder() != null ? step.getOrder() : i + 1;
-                            java.util.Optional<Path> errSsOpt = safeScreenshot(activePage[0], screenshotDir, fullPageScreenshot);
+                            final int stepOrderForErr = stepOrderVal;
+                            java.util.Optional<Path> errSsOpt = safeScreenshot(activePage[0], screenshotDir, fullPageScreenshot, fixedScreenshotName);
                             errSsOpt.ifPresent(p -> {
                                 String fn = p.getFileName().toString();
                                 writeSidecar(screenshotDir, fn, scenarioId, scenarioName,
